@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Obsidian (keep config, ignore personal data)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.obsidian/*.bak
+.obsidian/plugins/*/data.json
+
+# Node.js
+node_modules/
+
+# Temporary
+*.tmp
+*.bak

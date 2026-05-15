@@ -1,0 +1,9 @@
+{
+	"id": "open-in-terminal",
+	"name": "Open in Terminal",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Opens the vault's folder in a new terminal window.",
+	"author": "Yonatan Reicher",
+	"isDesktopOnly": true
+}

@@ -4,7 +4,7 @@ type: entity
 tags: [基础设施, 本地部署]
 aliases: [DevMechin, AI主机, Ubuntu主机]
 created: 2026-05-19
-updated: 2026-05-19
+updated: 2026-05-21
 sources: []
 confidence: high
 ---

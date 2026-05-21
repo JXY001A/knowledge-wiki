@@ -44,14 +44,14 @@ ssh jxy001a1@192.168.71.127
 |------|----------|----------|----------|
 | SSH | 22 | — | 内网直连 |
 | Jupyter | 8888 | 8888 | `http://8.133.175.201:8888` |
-| Ollama API | 11434 | 11434 | `http://8.133.175.201:11434` |
+| Ollama API | 11434 | — | 仅本机 `127.0.0.1`（不对外暴露） |
 
 ## 运行的服务
 
 | 服务 | 管理方式 | 开机自启 |
 |------|----------|----------|
 | `frpc`（隧道客户端） | `systemctl --user start/stop frpc` | ✅ |
-| `ollama`（模型推理） | `sudo systemctl start/stop ollama` | ✅ |
+| `ollama`（模型推理） | `sudo systemctl start/stop ollama` | ✅ | 仅监听 `127.0.0.1` |
 | Jupyter | 手动 `jupyter lab` | ❌ |
 
 ## 维护命令

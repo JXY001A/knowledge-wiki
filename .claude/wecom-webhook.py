@@ -549,13 +549,26 @@ confidence: medium
     return filepath
 
 
+def _extract_concept_names(concepts: list) -> list[str]:
+    """Extract concept names from list of strings or dicts."""
+    names = []
+    for c in concepts:
+        if isinstance(c, dict):
+            n = c.get("name", "")
+            if n:
+                names.append(n)
+        elif c and str(c) != "null":
+            names.append(str(c))
+    return names
+
+
 def _append_op_log(data: dict, url: str, page_title: str):
     """Append ingest entry to 操作日志.md."""
     log_path = WIKI_ROOT / "wiki" / "操作日志.md"
     if not log_path.exists():
         return
     today = datetime.now().strftime("%Y-%m-%d")
-    concepts = [c for c in data.get("concepts", []) if c and c != "null"]
+    concept_names = _extract_concept_names(data.get("concepts", []))
     domain = data.get("domain", "未知")
     summary = data.get("summary", "")
 
@@ -564,7 +577,7 @@ def _append_op_log(data: dict, url: str, page_title: str):
 
 - 来源：{url}
 - 新建页面：[[{page_title}]]
-- 新增概念：{", ".join(f"[[{c}]]" for c in concepts) if concepts else "无"}
+- 新增概念：{", ".join(f"[[{c}]]" for c in concept_names) if concept_names else "无"}
 - 领域：{domain}
 - 核心洞察：{summary}
 """
@@ -604,8 +617,13 @@ def _handle_url_ingest(user_id: str, url: str):
             f"⚠️ LLM 分析失败，已保存原文到 `{raw_file.relative_to(WIKI_ROOT)}`\n请手动 `ingest`")
         return
 
-    # Step 4: Build wiki page
+    # Step 4: Build wiki pages
     wiki_file = _build_source_page(llm_data, url)
+    new_concept_pages = []
+    for c in llm_data.get("concepts", []):
+        cp = _build_concept_page(c)
+        if cp:
+            new_concept_pages.append(cp)
 
     # Step 5: Update operation log
     page_title = llm_data.get("title", wiki_file.stem)
@@ -615,12 +633,12 @@ def _handle_url_ingest(user_id: str, url: str):
     _git_push(f"ingest: {page_title}")
 
     # Notify
-    concepts = [c for c in llm_data.get("concepts", []) if c and c != "null"]
+    concept_names = _extract_concept_names(llm_data.get("concepts", []))
     domain = llm_data.get("domain", "未知")
     summary = llm_data.get("summary", "")
-    msg = f"✅ 链接已摄取\n\n📄 **{page_title}**\n📁 领域：{domain}\n💡 {summary}"
-    if concepts:
-        msg += f"\n🔑 概念：{', '.join(concepts)}"
+    msg = f"✅ 已摄取到知识库\n\n📄 **{page_title}**\n📁 领域：{domain}\n💡 {summary}"
+    if concept_names:
+        msg += f"\n🆕 新概念：{', '.join(concept_names)}"
     _send_markdown(user_id, msg)
 
 

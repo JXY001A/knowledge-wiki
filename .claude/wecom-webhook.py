@@ -360,7 +360,7 @@ def _call_llm_ingest(content: str, url: str) -> dict | None:
             "model": "qwen2.5:3b",
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": content[:8000]},
+                {"role": "user", "content": content[:3000]},
             ],
             "stream": False,
             "format": "json",

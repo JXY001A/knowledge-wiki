@@ -294,22 +294,34 @@ def _fetch_url_text(url: str) -> str | None:
         })
         with urllib.request.urlopen(req, timeout=30) as resp:
             content_type = resp.headers.get("Content-Type", "")
-            html = resp.read().decode("utf-8", errors="ignore")
+            html_data = resp.read().decode("utf-8", errors="ignore")
 
         # If it's already text/markdown, return as-is
         if "text/plain" in content_type or "text/markdown" in content_type:
-            return html
+            return html_data
 
-        # Extract title
-        title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE)
-        title = html_mod.unescape(title_match.group(1).strip()) if title_match else url
+        # Extract title: try og:title > h1 > <title>
+        title = ""
+        for pattern in [
+            r'<meta\s+property="og:title"\s+content="(.*?)"',
+            r'<h1[^>]*?id="activity-name"[^>]*>(.*?)</h1>',
+            r"<h1[^>]*>(.*?)</h1>",
+            r"<title>(.*?)</title>",
+        ]:
+            m = re.search(pattern, html_data, re.IGNORECASE | re.DOTALL)
+            if m:
+                title = html_mod.unescape(re.sub(r"<[^>]+>", "", m.group(1)).strip())
+                if title:
+                    break
+        if not title:
+            title = url
 
         # Remove scripts, styles, nav, footer
         for tag in ["script", "style", "nav", "footer", "header"]:
-            html = re.sub(rf"<{tag}[^>]*>.*?</{tag}>", "", html, flags=re.DOTALL | re.IGNORECASE)
+            html_data = re.sub(rf"<{tag}[^>]*>.*?</{tag}>", "", html_data, flags=re.DOTALL | re.IGNORECASE)
 
         # Strip remaining HTML tags
-        text = re.sub(r"<[^>]+>", "\n", html)
+        text = re.sub(r"<[^>]+>", "\n", html_data)
 
         # Decode entities and clean whitespace
         text = html_mod.unescape(text)
@@ -329,32 +341,26 @@ def _fetch_url_text(url: str) -> str | None:
 
 def _call_llm_ingest(content: str, url: str) -> dict | None:
     """Call qwen2.5:3b to analyze content and produce structured wiki data."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    prompt = (
-        "你是知识库管理助手。阅读网页内容，输出 JSON 用于生成 wiki 页面。\n\n"
-        "输出格式（严格 JSON，不要 markdown 代码块，不要额外文字）：\n"
-        '{"title":"资料摘要：<简称>","domain":"<领域>","tags":["t1","t2"],'
-        '"summary":"50-100字摘要","key_points":["要点1","要点2","要点3"],'
-        '"notes":"详细笔记（整理原文关键内容，200-500字）",'
-        '"quotes":"值得引用的数据或观点",'
-        '"concepts":["核心概念1","核心概念2"]}\n\n'
-        "规则：\n"
-        "- title: \"资料摘要：\" 前缀 + 10字以内核心主题\n"
-        "- domain: 从 [AI平台, AI应用, MCP, 知识工程, 工具, 部署运维, 产品设计, 商业, LLM, Agent, 其他] 选最匹配的 1 个\n"
-        "- tags: 2-4 个标签\n"
-        "- 基于原文，不编造信息\n"
-        "- concepts: 提取 1-3 个核心概念术语\n"
-        "- 所有中文内容用中文\n\n"
-        f"[网页内容]\n{content[:8000]}\n\n"
-        f"[URL]\n{url}"
+    system_prompt = (
+        "Output ONLY this JSON structure, nothing else:\n"
+        '{"title":"资料摘要：<10字主题>","domain":"<1个领域>","tags":["标签1","标签2"],'
+        '"summary":"<100字摘要>","key_points":["要点1","要点2","要点3"],'
+        '"notes":"<200-500字详细笔记>","quotes":"<关键引用>",'
+        '"concepts":["概念1","概念2"]}\n\n'
+        "Rules:\n"
+        "- title MUST start with 资料摘要：\n"
+        "- domain MUST be one of: AI平台, AI应用, MCP, 知识工程, 工具, 部署运维, 产品设计, 商业, LLM, Agent, 其他\n"
+        "- All field values in Chinese\n"
+        "- Only use facts from the content, do not fabricate\n"
+        "- concepts: 1-3 core technical terms from the content"
     )
 
     try:
         body = json.dumps({
             "model": "qwen2.5:3b",
             "messages": [
-                {"role": "system", "content": "你是知识库管理助手。分析网页内容，输出结构化的 wiki 数据。"},
-                {"role": "user", "content": prompt},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content[:8000]},
             ],
             "stream": False,
             "format": "json",

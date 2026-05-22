@@ -45,6 +45,7 @@ updated: 2026-05-23
 - [[MCP（Model Context Protocol）]]
 - [[ReAct架构]]
 - [[渐进式披露]]
+- [[Claude Code 长期记忆系统]]
 - [[上下文工程]]
 - [[自进化Agent]]
 - [[知识工程（Knowledge Engineering）]]
@@ -76,6 +77,7 @@ updated: 2026-05-23
 
 ## 最近更新
 
+- 2026-05-23：concept Claude Code 长期记忆系统 —— 全局/项目两层架构、加载机制、优先级
 - 2026-05-22：synthesis AI 自进化知识系统 — 建设路线图 —— 五层架构分阶段实施计划
 - 2026-05-22：synthesis 企业微信Bot—MCP检索与模型交互链路 —— MCP+LLM交互全链路
 - 2026-05-22：synthesis 知识库系统全链路架构 —— 完整技术架构文档

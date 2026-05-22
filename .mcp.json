@@ -2,6 +2,10 @@
   "mcpServers": {
     "wiki": {
       "url": "http://8.133.175.201:9300/mcp"
+    },
+    "vision": {
+      "command": "/Users/jinxianyu/mcp-servers/.venv/bin/python3",
+      "args": ["/Users/jinxianyu/mcp-servers/vision-server.py"]
     }
   }
 }

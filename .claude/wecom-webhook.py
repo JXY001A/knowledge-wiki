@@ -340,68 +340,95 @@ def _fetch_url_text(url: str) -> str | None:
 
 
 def _call_llm_ingest(content: str, url: str) -> dict | None:
-    """Call qwen2.5:3b to analyze content and produce structured wiki data."""
+    """Call DeepSeek API to analyze content and produce structured wiki data."""
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        print("[wecom] DEEPSEEK_API_KEY not set", flush=True)
+        return None
+
     system_prompt = (
-        "Output ONLY this JSON structure, nothing else:\n"
-        '{"title":"资料摘要：<10字主题>","domain":"<1个领域>","tags":["标签1","标签2"],'
-        '"summary":"<100字摘要>","key_points":["要点1","要点2","要点3"],'
-        '"notes":"<200-500字详细笔记>","quotes":"<关键引用>",'
-        '"concepts":["概念1","概念2"]}\n\n'
-        "Rules:\n"
-        "- title MUST start with 资料摘要：\n"
-        "- domain MUST be one of: AI平台, AI应用, MCP, 知识工程, 工具, 部署运维, 产品设计, 商业, LLM, Agent, 其他\n"
-        "- All field values in Chinese\n"
-        "- Only use facts from the content, do not fabricate\n"
-        "- concepts: 1-3 core technical terms from the content"
+        "你是知识库管理助手。阅读网页内容，输出结构化 JSON 用于生成 wiki 页面。\n\n"
+        "## 输出格式\n\n"
+        "严格输出以下 JSON 结构，不要 markdown 代码块：\n"
+        '{"title":"资料摘要：<10字主题>","domain":"<领域>","tags":["标签1","标签2","标签3"],'
+        '"summary":"<100-150字摘要>","key_points":["要点1","要点2","要点3","要点4"],'
+        '"notes":"<详细笔记，整理原文关键内容，800-1500字，markdown格式>",'
+        '"quotes":"<原文中值得引用的关键数据、观点或结论>",'
+        '"concepts":[{"name":"概念名","definition":"一句话定义（≤50字）","importance":"为什么重要"}],'
+        '"related_pages":["[[已存在的相关页面]]"]}\n\n'
+        "## 规则\n\n"
+        "1. title: 必须以\"资料摘要：\"开头，后接10字以内的核心主题\n"
+        "2. domain: 从 [AI平台, AI应用, MCP, 知识工程, 工具, 部署运维, 产品设计, 商业, LLM, Agent, 基础设施, 其他] 选最匹配的1个\n"
+        "3. tags: 3-5个，优先从 [概念, 教程, 深度, 综述, 观点, 资讯, 工具, 范式, 反模式, 案例, 基准, 最佳实践, 智能体, AI编程, 提示工程, 基础设施, 生态, 研究, 前端, 后端, 架构, 运维, 安全] 中选择\n"
+        "4. 所有内容使用中文\n"
+        "5. 严格基于原文，不编造信息\n"
+        "6. summary: 100-150字的完整摘要，概括文章核心内容\n"
+        "7. key_points: 4-6个核心要点，每个20-40字\n"
+        "8. notes: 用 markdown 详细整理原文关键内容，800-1500字，保留重要细节、数据和观点\n"
+        "9. concepts: 提取2-5个核心概念，每个含 name（概念名）、definition（≤50字定义）、importance（为什么重要）\n"
+        "10. quotes: 摘录原文值得引用的关键数据或观点（原文摘录，中文）\n"
+        "11. related_pages: 推测可能与本文相关的 wiki 已有页面（使用 [[wikilink]] 格式），如不确定填空数组"
     )
 
     try:
         body = json.dumps({
-            "model": "qwen2.5:3b",
+            "model": "deepseek-v4-pro",
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": content[:3000]},
+                {"role": "user", "content": content[:40000]},
             ],
             "stream": False,
-            "format": "json",
-            "options": {"num_predict": 1500, "temperature": 0.1},
+            "temperature": 0.1,
+            "max_tokens": 4096,
         }).encode()
 
         req = urllib.request.Request(
-            "http://localhost:11434/api/chat",
-            data=body, headers={"Content-Type": "application/json"},
+            "https://api.deepseek.com/v1/chat/completions",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
         )
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            result = json.loads(resp.read()).get("message", {}).get("content", "")
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            result = json.loads(resp.read())
+            raw_content = result["choices"][0]["message"]["content"]
 
-        if not result.strip():
+        if not raw_content or not raw_content.strip():
             print("[wecom] LLM ingest: empty response", flush=True)
             return None
 
-        # Extract JSON
-        result = result.strip()
-        result = re.sub(r"```(?:json)?\s*", "", result)
-        result = re.sub(r"```", "", result)
+        # Save debug output
+        try:
+            with open("/tmp/llm_debug.txt", "w") as f:
+                f.write(raw_content)
+        except Exception:
+            pass
 
-        start = result.find("{")
+        # Extract JSON
+        raw_content = raw_content.strip()
+        raw_content = re.sub(r"```(?:json)?\s*", "", raw_content)
+        raw_content = re.sub(r"```", "", raw_content)
+
+        start = raw_content.find("{")
         if start == -1:
-            print(f"[wecom] LLM ingest: no JSON in {result[:150]}", flush=True)
+            print(f"[wecom] LLM ingest: no JSON in {raw_content[:200]}", flush=True)
             return None
 
         depth = 0
-        for i, ch in enumerate(result[start:], start):
+        for i, ch in enumerate(raw_content[start:], start):
             if ch == "{":
                 depth += 1
             elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    parsed = json.loads(result[start:i + 1])
-                    print(f"[wecom] LLM ingest OK: {parsed.get('title', '?')}", flush=True)
+                    parsed = json.loads(raw_content[start:i + 1])
+                    print(f"[wecom] DeepSeek ingest OK: {parsed.get('title', '?')}", flush=True)
                     return parsed
 
         return None
     except Exception as e:
-        print(f"[wecom] LLM ingest failed: {e}", flush=True)
+        print(f"[wecom] DeepSeek API failed: {e}", flush=True)
         return None
 
 
@@ -409,7 +436,7 @@ def _build_source_page(data: dict, url: str) -> Path:
     """Build wiki/资料摘要/ page from LLM data and save it."""
     today = datetime.now().strftime("%Y-%m-%d")
     tags = [t for t in data.get("tags", []) if t and t != "null"]
-    concepts = [c for c in data.get("concepts", []) if c and c != "null"]
+    concepts = data.get("concepts", [])
     title = data.get("title", f"资料摘要：{data.get('domain', '未分类')}")
 
     page = f"""---
@@ -430,7 +457,7 @@ media: article
 
 """
     for p in data.get("key_points", []):
-        if p and p != "null":
+        if p and str(p) != "null":
             page += f"- {p}\n"
 
     notes = data.get("notes", "（暂无详细笔记）")
@@ -450,7 +477,19 @@ media: article
 """
     if concepts:
         for c in concepts:
-            page += f"- [[{c}]]\n"
+            if isinstance(c, dict):
+                name = c.get("name", "")
+                if name:
+                    page += f"- [[{name}]]\n"
+            elif c and str(c) != "null":
+                page += f"- [[{c}]]\n"
+
+    # Add related_pages if provided
+    related = data.get("related_pages", [])
+    if related:
+        for r in related:
+            if r and str(r) != "null":
+                page += f"- {r}\n"
 
     page += f"\n- [[Wiki 目录]]\n"
 
@@ -458,6 +497,54 @@ media: article
     dest.mkdir(parents=True, exist_ok=True)
     safe_name = title.replace(":", "：").replace("/", "-")
     filepath = dest / f"{safe_name}.md"
+    filepath.write_text(page)
+    return filepath
+
+
+def _build_concept_page(concept: dict) -> Path | None:
+    """Create a wiki/概念/ page for an extracted concept, if it does not already exist."""
+    name = concept.get("name", "")
+    if not name:
+        return None
+
+    dest_dir = WIKI_ROOT / "wiki" / "概念"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = name.replace(":", "：").replace("/", "-")
+    filepath = dest_dir / f"{safe_name}.md"
+
+    if filepath.exists():
+        return None  # Already exists, skip
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    definition = concept.get("definition", "")
+    importance = concept.get("importance", "")
+
+    page = f"""---
+title: {name}
+type: concept
+tags: [概念]
+aliases: []
+created: {today}
+updated: {today}
+sources: []
+related_concepts: []
+confidence: medium
+---
+
+> {definition}
+
+## 是什么
+
+{definition}
+
+## 为什么重要
+
+{importance}
+
+## 相关
+
+- [[Wiki 目录]]
+"""
     filepath.write_text(page)
     return filepath
 

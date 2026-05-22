@@ -183,27 +183,11 @@ def _send_template_card(user_id: str, title: str, summary: str,
 
 # ---- MCP Client ----
 
-def _mcp_query(question: str) -> str | None:
-    """Query wiki via MCP, with full-page-content fallback for search results."""
+def _mcp_call_tool(tool_name: str, args: dict, timeout: int = 60) -> str | None:
+    """Initialize MCP session and call a tool. Returns text content or None."""
     base = "http://localhost:9300/mcp"
     accept = "application/json, text/event-stream"
     hdr = {"Content-Type": "application/json", "Accept": accept}
-
-    def _call_tool(name: str, args: dict, sid: str) -> str | None:
-        body = json.dumps({"jsonrpc": "2.0", "id": "t", "method": "tools/call",
-            "params": {"name": name, "arguments": args}}).encode()
-        req = urllib.request.Request(base, data=body,
-            headers={**hdr, "Mcp-Session-Id": sid})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            raw = resp.read().decode()
-        for line in raw.split("\n"):
-            if line.startswith("data: "):
-                data = json.loads(line[6:])
-                if "result" in data:
-                    for c in data["result"].get("content", []):
-                        if c.get("type") == "text":
-                            return c["text"]
-        return None
 
     try:
         # 1. Initialize session
@@ -223,37 +207,56 @@ def _mcp_query(question: str) -> str | None:
             headers={**hdr, "Mcp-Session-Id": sid})
         urllib.request.urlopen(req, timeout=10)
 
-        # 3. Try query (title+tag match → full content)
-        result = _call_tool("query", {"question": question}, sid)
-        if result and "未在 wiki 中找到" not in result:
-            return result
+        # 3. Call tool
+        body = json.dumps({"jsonrpc": "2.0", "id": "t", "method": "tools/call",
+            "params": {"name": tool_name, "arguments": args}}).encode()
+        req = urllib.request.Request(base, data=body,
+            headers={**hdr, "Mcp-Session-Id": sid})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw_data = resp.read().decode()
 
-        # 4. Fallback: search → get paths → read full pages (strip frontmatter!)
-        result = _call_tool("search", {"keyword": question}, sid)
-        if result and "未找到" not in result:
-            wiki_dir = WIKI_ROOT / "wiki"
-            page_paths = re.findall(r"路径:\s*`([^`]+)`", result)
-            if page_paths:
-                full_texts = []
-                for path in page_paths[:5]:
-                    fpath = WIKI_ROOT / path
-                    if fpath.exists():
-                        text = fpath.read_text()
-                        # Strip frontmatter — LLM confused by metadata
-                        body = text
-                        if text.startswith("---"):
-                            end = text.find("---", 3)
-                            if end != -1:
-                                body = text[end+3:].strip()
-                        full_texts.append(f"## {fpath.stem}\n\n{body[:2000]}")
-                if full_texts:
-                    return f"# 查询：{question}\n\n" + "\n\n---\n\n".join(full_texts)
-            return result
-
+        for line in raw_data.split("\n"):
+            if line.startswith("data: "):
+                data = json.loads(line[6:])
+                if "result" in data:
+                    for c in data["result"].get("content", []):
+                        if c.get("type") == "text":
+                            return c["text"]
         return None
     except Exception as e:
-        print(f"[wecom] MCP query failed: {e}", flush=True)
+        print(f"[wecom] MCP call {tool_name} failed: {e}", flush=True)
         return None
+
+
+def _mcp_query(question: str) -> str | None:
+    """Query wiki via MCP, with full-page-content fallback for search results."""
+    # Try query (title+tag match → full content)
+    result = _mcp_call_tool("query", {"question": question})
+    if result and "未在 wiki 中找到" not in result:
+        return result
+
+    # Fallback: search → get paths → read full pages (strip frontmatter!)
+    result = _mcp_call_tool("search", {"keyword": question})
+    if result and "未找到" not in result:
+        wiki_dir = WIKI_ROOT / "wiki"
+        page_paths = re.findall(r"路径:\s*`([^`]+)`", result)
+        if page_paths:
+            full_texts = []
+            for path in page_paths[:5]:
+                fpath = WIKI_ROOT / path
+                if fpath.exists():
+                    text = fpath.read_text()
+                    body = text
+                    if text.startswith("---"):
+                        end = text.find("---", 3)
+                        if end != -1:
+                            body = text[end+3:].strip()
+                    full_texts.append(f"## {fpath.stem}\n\n{body[:2000]}")
+            if full_texts:
+                return f"# 查询：{question}\n\n" + "\n\n---\n\n".join(full_texts)
+        return result
+
+    return None
 
 
 # ---- Message Processing ----
@@ -277,15 +280,41 @@ def _git_push(msg: str):
         pass
 
 
+def _is_url(text: str) -> bool:
+    """Check if text is a URL (http/https)."""
+    return bool(re.match(r'^https?://[^\s]+$', text))
+
+
+def _handle_url_ingest(user_id: str, url: str):
+    """Auto-ingest a URL: MCP ingest → git push → notify."""
+    _send_markdown(user_id, f"🔍 正在摄取链接...\n\n{url[:200]}")
+
+    result = _mcp_call_tool("ingest", {"source": url, "domain": "收件箱"}, timeout=120)
+    if result:
+        _git_push(f"ingest: URL {url[:80]}")
+        summary = result[:500] if len(result) > 500 else result
+        _send_markdown(user_id,
+            f"✅ 链接已摄取到知识库\n\n> {summary}")
+    else:
+        # Fallback: save URL to inbox for manual processing
+        filepath = _save_to_inbox(url, "url")
+        _git_push(f"ingest: wecom url {filepath.name}")
+        _send_markdown(user_id,
+            f"⚠️ 自动摄取失败，已保存到收件箱\n\n> 文件：`{filepath.relative_to(WIKI_ROOT)}`\n> 可在 Claude Code 中手动 `ingest`")
+
+
 def _process(user_id: str, text: str):
-    """Process incoming message: ? for query, else ingest."""
+    """Process incoming message: ? for query, URL for auto-ingest, else save to inbox."""
     try:
-        if text.strip().startswith("?"):
-            question = text.strip()[1:].strip()
+        stripped = text.strip()
+        if stripped.startswith("?"):
+            question = stripped[1:].strip()
             if not question:
                 _send_markdown(user_id, "请输入查询内容，如：`? DevMechin GPU`")
                 return
             _handle_query(user_id, question)
+        elif _is_url(stripped):
+            _handle_url_ingest(user_id, stripped)
         else:
             filepath = _save_to_inbox(text, "text")
             _git_push(f"ingest: wecom text {filepath.name}")

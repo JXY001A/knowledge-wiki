@@ -59,5 +59,5 @@ Ingest（摄入）→ Query（查询）→ Lint（巡检）
 - [[知识工程（Knowledge Engineering）]]
 - [[Obsidian-Wiki]]
 - [[GBrain]]
-- [[渐进式披露（Progressive Disclosure）]]
+- [[渐进式披露]]
 - [[Wiki 目录]]

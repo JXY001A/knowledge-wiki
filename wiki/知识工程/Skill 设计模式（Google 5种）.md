@@ -99,6 +99,6 @@ confidence: medium
 
 - [[Agent Skill]]
 - [[Skill-Creator]]
-- [[渐进式披露（Progressive Disclosure）]]
+- [[渐进式披露]]
 - [[知识工程（Knowledge Engineering）]]
 - [[Wiki 目录]]

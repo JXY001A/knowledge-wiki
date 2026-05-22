@@ -64,6 +64,6 @@ back-link boost 是主要提升来源。
 
 - [[LLM Wiki 模式]]
 - [[Obsidian-Wiki]]
-- [[渐进式披露（Progressive Disclosure）]]
+- [[渐进式披露]]
 - [[知识工程（Knowledge Engineering）]]
 - [[Wiki 目录]]

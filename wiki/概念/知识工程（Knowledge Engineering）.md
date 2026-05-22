@@ -7,7 +7,7 @@ created: 2026-05-17
 updated: 2026-05-17
 sources:
   - "[[资料摘要：Agent 知识管理与自进化]]"
-related_concepts: [[渐进式披露（Progressive Disclosure）]]
+related_concepts: [[渐进式披露]]
 confidence: medium
 ---
 
@@ -44,6 +44,6 @@ confidence: medium
 
 - [[LLM Wiki 模式]]
 - [[GBrain]]
-- [[渐进式披露（Progressive Disclosure）]]
+- [[渐进式披露]]
 - [[AI Workflow]]
 - [[Wiki 目录]]

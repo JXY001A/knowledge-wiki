@@ -45,7 +45,6 @@ updated: 2026-05-23
 - [[MCP（Model Context Protocol）]]
 - [[ReAct架构]]
 - [[渐进式披露]]
-- [[渐进式披露（Progressive Disclosure）]]
 - [[上下文工程]]
 - [[自进化Agent]]
 - [[知识工程（Knowledge Engineering）]]

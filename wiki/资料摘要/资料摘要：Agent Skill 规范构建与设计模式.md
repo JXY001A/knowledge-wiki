@@ -99,7 +99,7 @@ TDD 式 RED-GREEN-REFACTOR：
 - [[Agent Skill]]
 - [[Skill-Creator]]
 - [[Skill 设计模式（Google 5种）]]
-- [[渐进式披露（Progressive Disclosure）]]
+- [[渐进式披露]]
 - [[知识工程（Knowledge Engineering）]]
 - [[LLM Wiki 模式]]
 - [[Wiki 目录]]

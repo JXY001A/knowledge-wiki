@@ -19,7 +19,7 @@ media: article
 - **LLM Wiki（Karpathy）**：三层架构（raw → wiki → schema），知识被提前"编译"而非每次查询重新检索
 - **Obsidian-Wiki**：在 LLM Wiki 基础上增强 — Delta 追踪（SHA-256）、来源可信度边界、溯源标记、hot.md 热缓存
 - **GBrain（Garry Tan）**：混合检索（向量粗筛 + 文件精读）、图谱实体关系、Thin Harness Fat Skills 哲学
-- **关键机制**：渐进式披露（Progressive Disclosure）— 先确认相关性，再加载完整知识
+- **关键机制**：渐进式披露— 先确认相关性，再加载完整知识
 - **核心对比**：RAG 是"带着书本进考场"，Skillify 是"把书读透并记成整理后的笔记"
 - GBrain Benchmark：带图谱 P@5 = 49.1%，无图谱仅 17.7%（+31.4pp）
 
@@ -74,7 +74,7 @@ schema/（定义结构和约定的元指令文件）
 ## 相关
 
 - [[知识工程（Knowledge Engineering）]]
-- [[渐进式披露（Progressive Disclosure）]]
+- [[渐进式披露]]
 - [[LLM Wiki 模式]]
 - [[Obsidian-Wiki]]
 - [[GBrain]]

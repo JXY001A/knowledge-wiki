@@ -7,7 +7,7 @@ created: 2026-05-18
 updated: 2026-05-18
 sources:
   - "[[资料摘要：Agent Skill 规范构建与设计模式]]"
-related_concepts: [[渐进式披露（Progressive Disclosure）]]
+related_concepts: [[渐进式披露]]
 confidence: high
 ---
 
@@ -56,7 +56,7 @@ L3 按需时：读取 scripts/、references/、assets/ 中的特定文件
 
 ## 相关
 
-- [[渐进式披露（Progressive Disclosure）]]
+- [[渐进式披露]]
 - [[Skill-Creator]]
 - [[Skill 设计模式（Google 5种）]]
 - [[知识工程（Knowledge Engineering）]]

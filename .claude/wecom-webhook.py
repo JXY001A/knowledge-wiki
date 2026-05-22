@@ -353,10 +353,11 @@ def _call_llm_ingest(content: str, url: str) -> dict | None:
         body = json.dumps({
             "model": "qwen2.5:3b",
             "messages": [
-                {"role": "system", "content": "输出严格 JSON，不要 markdown 代码块，不要额外说明文字。"},
+                {"role": "system", "content": "你是知识库管理助手。分析网页内容，输出结构化的 wiki 数据。"},
                 {"role": "user", "content": prompt},
             ],
             "stream": False,
+            "format": "json",
             "options": {"num_predict": 1500, "temperature": 0.1},
         }).encode()
 

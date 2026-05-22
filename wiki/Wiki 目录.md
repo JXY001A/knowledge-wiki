@@ -2,7 +2,7 @@
 title: Wiki 目录
 tags: [目录, 导航]
 created: 2026-05-15
-updated: 2026-05-22
+updated: 2026-05-23
 ---
 
 # Wiki 目录
@@ -21,6 +21,10 @@ updated: 2026-05-22
 
 - [[AI 日报生成器]]
 
+### Agent
+
+- [[资料摘要：Agent技术范式演变]]
+
 ### MCP
 
 - [[MCP Vision Server 方案]]
@@ -36,10 +40,18 @@ updated: 2026-05-22
 ## 概念
 
 - [[AI Workflow]]
+- [[Agentic Workflow]]
+- [[Agent Skills体系]]
 - [[MCP（Model Context Protocol）]]
+- [[ReAct架构]]
+- [[渐进式披露]]
 - [[渐进式披露（Progressive Disclosure）]]
+- [[上下文工程]]
+- [[自进化Agent]]
 - [[知识工程（Knowledge Engineering）]]
 - [[Agent Skill]]
+- [[CLI原生化]]
+- [[Harness]]
 
 ## 资料摘要
 
@@ -48,7 +60,7 @@ updated: 2026-05-22
 - [[资料摘要：本地 VL MCP Vision Server 方案]]
 - [[资料摘要：Agent 知识管理与自进化]]
 - [[资料摘要：Agent Skill 规范构建与设计模式]]
-
+- [[资料摘要：Agent技术范式演变]]
 - [[资料摘要：OpenClaw 多平台适配器架构]]
 
 ## 综合分析

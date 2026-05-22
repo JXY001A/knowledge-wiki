@@ -4,8 +4,9 @@ type: source
 tags: ["范式", "智能体", "深度", "观点"]
 created: 2026-05-22
 updated: 2026-05-22
-sources: []
-confidence: medium
+sources:
+  - "[[Agent核心技术概念与范式演变]]"
+confidence: high
 source_url: https://mp.weixin.qq.com/s/11Krmb5KYmCHDQ4zN9O4uQ
 media: article
 ---

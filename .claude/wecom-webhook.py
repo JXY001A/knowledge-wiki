@@ -10,6 +10,7 @@
 
 import base64
 import hashlib
+import html as html_mod
 import json
 import os
 import random
@@ -301,7 +302,7 @@ def _fetch_url_text(url: str) -> str | None:
 
         # Extract title
         title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE)
-        title = html.unescape(title_match.group(1).strip()) if title_match else url
+        title = html_mod.unescape(title_match.group(1).strip()) if title_match else url
 
         # Remove scripts, styles, nav, footer
         for tag in ["script", "style", "nav", "footer", "header"]:
@@ -311,7 +312,7 @@ def _fetch_url_text(url: str) -> str | None:
         text = re.sub(r"<[^>]+>", "\n", html)
 
         # Decode entities and clean whitespace
-        text = html.unescape(text)
+        text = html_mod.unescape(text)
         text = re.sub(r"&nbsp;", " ", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = re.sub(r"[ \t]+", " ", text)

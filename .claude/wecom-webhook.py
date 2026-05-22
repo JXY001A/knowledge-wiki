@@ -184,47 +184,57 @@ def _send_template_card(user_id: str, title: str, summary: str,
 # ---- MCP Client ----
 
 def _mcp_query(question: str) -> str | None:
-    """Call wiki-mcp query tool on localhost:9300 via MCP streamable HTTP.
-
-    Returns raw markdown context from matching wiki pages, or None on failure.
+    """Call wiki-mcp on localhost:9300 via MCP streamable HTTP.
+    Uses query first, falls back to search if query returns empty.
     """
     base = "http://localhost:9300/mcp"
-    hdr = {"Content-Type": "application/json"}
+    accept = "application/json, text/event-stream"
+    hdr = {"Content-Type": "application/json", "Accept": accept}
 
-    try:
-        # 1. Initialize session
-        req = urllib.request.Request(base,
-            data=json.dumps({"jsonrpc": "2.0", "id": "init", "method": "initialize",
-                "params": {"protocolVersion": "2024-11-05", "capabilities": {},
-                    "clientInfo": {"name": "wecom-webhook", "version": "1.0"}}}).encode(),
-            headers=hdr)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            session_id = resp.headers.get("Mcp-Session-Id", "")
-        if not session_id:
-            return None
-
-        # 2. Send initialized notification
-        req = urllib.request.Request(base,
-            data=json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}).encode(),
-            headers={**hdr, "Mcp-Session-Id": session_id})
-        urllib.request.urlopen(req, timeout=10)
-
-        # 3. Call query tool
-        req = urllib.request.Request(base,
-            data=json.dumps({"jsonrpc": "2.0", "id": "q", "method": "tools/call",
-                "params": {"name": "query", "arguments": {"question": question}}}).encode(),
-            headers={**hdr, "Mcp-Session-Id": session_id, "Accept": "text/event-stream"})
+    def _call_tool(name: str, args: dict, sid: str) -> str | None:
+        body = json.dumps({"jsonrpc": "2.0", "id": "t", "method": "tools/call",
+            "params": {"name": name, "arguments": args}}).encode()
+        req = urllib.request.Request(base, data=body,
+            headers={**hdr, "Mcp-Session-Id": sid})
         with urllib.request.urlopen(req, timeout=60) as resp:
-            body = resp.read().decode()
-
-        # Parse SSE response
-        for line in body.split("\n"):
+            raw = resp.read().decode()
+        for line in raw.split("\n"):
             if line.startswith("data: "):
                 data = json.loads(line[6:])
                 if "result" in data:
                     for c in data["result"].get("content", []):
                         if c.get("type") == "text":
                             return c["text"]
+        return None
+
+    try:
+        # 1. Initialize
+        req = urllib.request.Request(base,
+            data=json.dumps({"jsonrpc": "2.0", "id": "init", "method": "initialize",
+                "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                    "clientInfo": {"name": "wecom-webhook", "version": "1.0"}}}).encode(),
+            headers=hdr)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            sid = resp.headers.get("Mcp-Session-Id", "")
+        if not sid:
+            return None
+
+        # 2. Initialized notification
+        req = urllib.request.Request(base,
+            data=json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}).encode(),
+            headers={**hdr, "Mcp-Session-Id": sid})
+        urllib.request.urlopen(req, timeout=10)
+
+        # 3. Try query first (title+tag match)
+        result = _call_tool("query", {"question": question}, sid)
+        if result and "未在 wiki 中找到" not in result:
+            return result
+
+        # 4. Fallback: full-text search
+        result = _call_tool("search", {"keyword": question}, sid)
+        if result and "未找到" not in result:
+            return result
+
         return None
     except Exception as e:
         print(f"[wecom] MCP query failed: {e}", flush=True)

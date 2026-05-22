@@ -285,22 +285,63 @@ def _is_url(text: str) -> bool:
     return bool(re.match(r'^https?://[^\s]+$', text))
 
 
-def _handle_url_ingest(user_id: str, url: str):
-    """Auto-ingest a URL: MCP ingest → git push → notify."""
-    _send_markdown(user_id, f"🔍 正在摄取链接...\n\n{url[:200]}")
+def _fetch_url_text(url: str) -> str | None:
+    """Download URL and extract readable text."""
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; KnowledgeBot/1.0)"
+        })
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            content_type = resp.headers.get("Content-Type", "")
+            html = resp.read().decode("utf-8", errors="ignore")
 
-    result = _mcp_call_tool("ingest", {"source": url, "domain": "收件箱"}, timeout=120)
-    if result:
-        _git_push(f"ingest: URL {url[:80]}")
-        summary = result[:500] if len(result) > 500 else result
+        # If it's already text/markdown, return as-is
+        if "text/plain" in content_type or "text/markdown" in content_type:
+            return html
+
+        # Extract title
+        title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE)
+        title = html.unescape(title_match.group(1).strip()) if title_match else url
+
+        # Remove scripts, styles, nav, footer
+        for tag in ["script", "style", "nav", "footer", "header"]:
+            html = re.sub(rf"<{tag}[^>]*>.*?</{tag}>", "", html, flags=re.DOTALL | re.IGNORECASE)
+
+        # Strip remaining HTML tags
+        text = re.sub(r"<[^>]+>", "\n", html)
+
+        # Decode entities and clean whitespace
+        text = html.unescape(text)
+        text = re.sub(r"&nbsp;", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = re.sub(r"[ \t]+", " ", text)
+
+        # Trim to reasonable size (max ~50KB)
+        if len(text) > 50000:
+            text = text[:50000] + "\n\n...(内容已截断)"
+
+        return f"# {title}\n\n- 来源: {url}\n- 时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n{text.strip()}"
+    except Exception as e:
+        print(f"[wecom] fetch URL failed: {e}", flush=True)
+        return None
+
+
+def _handle_url_ingest(user_id: str, url: str):
+    """Auto-ingest a URL: download → save to raw/ → git push → notify."""
+    _send_markdown(user_id, f"🔍 正在提取链接内容...\n\n{url[:200]}")
+
+    content = _fetch_url_text(url)
+    if content:
+        filepath = _save_to_inbox(content, "url")
+        _git_push(f"ingest: {url[:80]}")
         _send_markdown(user_id,
-            f"✅ 链接已摄取到知识库\n\n> {summary}")
+            f"✅ 链接内容已保存\n\n> 文件：`{filepath.relative_to(WIKI_ROOT)}`\n> 在 Claude Code 中 `ingest` 即可生成 wiki 页面")
     else:
-        # Fallback: save URL to inbox for manual processing
-        filepath = _save_to_inbox(url, "url")
-        _git_push(f"ingest: wecom url {filepath.name}")
+        # Fallback: save URL reference for manual processing
+        filepath = _save_to_inbox(f"待摄取：{url}", "url")
+        _git_push(f"ingest: url ref {url[:80]}")
         _send_markdown(user_id,
-            f"⚠️ 自动摄取失败，已保存到收件箱\n\n> 文件：`{filepath.relative_to(WIKI_ROOT)}`\n> 可在 Claude Code 中手动 `ingest`")
+            f"⚠️ 无法提取内容，已保存链接\n\n> 文件：`{filepath.relative_to(WIKI_ROOT)}`")
 
 
 def _process(user_id: str, text: str):

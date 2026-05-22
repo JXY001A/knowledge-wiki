@@ -326,22 +326,207 @@ def _fetch_url_text(url: str) -> str | None:
         return None
 
 
-def _handle_url_ingest(user_id: str, url: str):
-    """Auto-ingest a URL: download → save to raw/ → git push → notify."""
-    _send_markdown(user_id, f"🔍 正在提取链接内容...\n\n{url[:200]}")
+def _call_llm_ingest(content: str, url: str) -> dict | None:
+    """Call qwen2.5:3b to analyze content and produce structured wiki data."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    prompt = (
+        "你是知识库管理助手。阅读网页内容，输出 JSON 用于生成 wiki 页面。\n\n"
+        "输出格式（严格 JSON，不要 markdown 代码块，不要额外文字）：\n"
+        '{"title":"资料摘要：<简称>","domain":"<领域>","tags":["t1","t2"],'
+        '"summary":"50-100字摘要","key_points":["要点1","要点2","要点3"],'
+        '"notes":"详细笔记（整理原文关键内容，200-500字）",'
+        '"quotes":"值得引用的数据或观点",'
+        '"concepts":["核心概念1","核心概念2"]}\n\n'
+        "规则：\n"
+        "- title: \"资料摘要：\" 前缀 + 10字以内核心主题\n"
+        "- domain: 从 [AI平台, AI应用, MCP, 知识工程, 工具, 部署运维, 产品设计, 商业, LLM, Agent, 其他] 选最匹配的 1 个\n"
+        "- tags: 2-4 个标签\n"
+        "- 基于原文，不编造信息\n"
+        "- concepts: 提取 1-3 个核心概念术语\n"
+        "- 所有中文内容用中文\n\n"
+        f"[网页内容]\n{content[:8000]}\n\n"
+        f"[URL]\n{url}"
+    )
 
-    content = _fetch_url_text(url)
-    if content:
-        filepath = _save_to_inbox(content, "url")
-        _git_push(f"ingest: {url[:80]}")
-        _send_markdown(user_id,
-            f"✅ 链接内容已保存\n\n> 文件：`{filepath.relative_to(WIKI_ROOT)}`\n> 在 Claude Code 中 `ingest` 即可生成 wiki 页面")
+    try:
+        body = json.dumps({
+            "model": "qwen2.5:3b",
+            "messages": [
+                {"role": "system", "content": "输出严格 JSON，不要 markdown 代码块，不要额外说明文字。"},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "options": {"num_predict": 1500, "temperature": 0.1},
+        }).encode()
+
+        req = urllib.request.Request(
+            "http://localhost:11434/api/chat",
+            data=body, headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            result = json.loads(resp.read()).get("message", {}).get("content", "")
+
+        if not result.strip():
+            print("[wecom] LLM ingest: empty response", flush=True)
+            return None
+
+        # Extract JSON
+        result = result.strip()
+        result = re.sub(r"```(?:json)?\s*", "", result)
+        result = re.sub(r"```", "", result)
+
+        start = result.find("{")
+        if start == -1:
+            print(f"[wecom] LLM ingest: no JSON in {result[:150]}", flush=True)
+            return None
+
+        depth = 0
+        for i, ch in enumerate(result[start:], start):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    parsed = json.loads(result[start:i + 1])
+                    print(f"[wecom] LLM ingest OK: {parsed.get('title', '?')}", flush=True)
+                    return parsed
+
+        return None
+    except Exception as e:
+        print(f"[wecom] LLM ingest failed: {e}", flush=True)
+        return None
+
+
+def _build_source_page(data: dict, url: str) -> Path:
+    """Build wiki/资料摘要/ page from LLM data and save it."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    tags = [t for t in data.get("tags", []) if t and t != "null"]
+    concepts = [c for c in data.get("concepts", []) if c and c != "null"]
+    title = data.get("title", f"资料摘要：{data.get('domain', '未分类')}")
+
+    page = f"""---
+title: {title}
+type: source
+tags: {json.dumps(tags, ensure_ascii=False)}
+created: {today}
+updated: {today}
+sources: []
+confidence: medium
+source_url: {url}
+media: article
+---
+
+> {data.get("summary", "（摘要缺失）")}
+
+## 核心要点
+
+"""
+    for p in data.get("key_points", []):
+        if p and p != "null":
+            page += f"- {p}\n"
+
+    notes = data.get("notes", "（暂无详细笔记）")
+    quotes = data.get("quotes", "（暂无引用数据）")
+
+    page += f"""
+## 详细笔记
+
+{notes}
+
+## 引用与数据
+
+{quotes}
+
+## 相关
+
+"""
+    if concepts:
+        for c in concepts:
+            page += f"- [[{c}]]\n"
+
+    page += f"\n- [[Wiki 目录]]\n"
+
+    dest = WIKI_ROOT / "wiki" / "资料摘要"
+    dest.mkdir(parents=True, exist_ok=True)
+    safe_name = title.replace(":", "：").replace("/", "-")
+    filepath = dest / f"{safe_name}.md"
+    filepath.write_text(page)
+    return filepath
+
+
+def _append_op_log(data: dict, url: str, page_title: str):
+    """Append ingest entry to 操作日志.md."""
+    log_path = WIKI_ROOT / "wiki" / "操作日志.md"
+    if not log_path.exists():
+        return
+    today = datetime.now().strftime("%Y-%m-%d")
+    concepts = [c for c in data.get("concepts", []) if c and c != "null"]
+    domain = data.get("domain", "未知")
+    summary = data.get("summary", "")
+
+    entry = f"""
+## [{today}] ingest | {page_title}
+
+- 来源：{url}
+- 新建页面：[[{page_title}]]
+- 新增概念：{", ".join(f"[[{c}]]" for c in concepts) if concepts else "无"}
+- 领域：{domain}
+- 核心洞察：{summary}
+"""
+    content = log_path.read_text()
+    marker = "> 每次 ingest / query / lint"
+    pos = content.find(marker)
+    if pos != -1:
+        insert_at = content.find("\n", pos) + 1
+        if content[insert_at] == "\n":
+            insert_at += 1
     else:
-        # Fallback: save URL reference for manual processing
+        insert_at = len(content)
+    updated = content[:insert_at] + entry + "\n" + content[insert_at:]
+    log_path.write_text(updated)
+
+
+def _handle_url_ingest(user_id: str, url: str):
+    """Auto-ingest a URL: download → LLM analyze → wiki page → log → git push."""
+    _send_markdown(user_id, f"🔍 正在提取并分析链接内容...\n\n{url[:200]}")
+
+    # Step 1: Download
+    raw_text = _fetch_url_text(url)
+    if not raw_text:
         filepath = _save_to_inbox(f"待摄取：{url}", "url")
         _git_push(f"ingest: url ref {url[:80]}")
+        _send_markdown(user_id, f"⚠️ 无法下载链接内容，已保存链接到 `{filepath.relative_to(WIKI_ROOT)}`")
+        return
+
+    # Step 2: Save raw to inbox
+    raw_file = _save_to_inbox(raw_text, "url")
+
+    # Step 3: LLM analyze → generate wiki page
+    llm_data = _call_llm_ingest(raw_text, url)
+    if not llm_data:
+        _git_push(f"ingest: raw {url[:80]}")
         _send_markdown(user_id,
-            f"⚠️ 无法提取内容，已保存链接\n\n> 文件：`{filepath.relative_to(WIKI_ROOT)}`")
+            f"⚠️ LLM 分析失败，已保存原文到 `{raw_file.relative_to(WIKI_ROOT)}`\n请手动 `ingest`")
+        return
+
+    # Step 4: Build wiki page
+    wiki_file = _build_source_page(llm_data, url)
+
+    # Step 5: Update operation log
+    page_title = llm_data.get("title", wiki_file.stem)
+    _append_op_log(llm_data, url, page_title)
+
+    # Step 6: Git push
+    _git_push(f"ingest: {page_title}")
+
+    # Notify
+    concepts = [c for c in llm_data.get("concepts", []) if c and c != "null"]
+    domain = llm_data.get("domain", "未知")
+    summary = llm_data.get("summary", "")
+    msg = f"✅ 链接已摄取\n\n📄 **{page_title}**\n📁 领域：{domain}\n💡 {summary}"
+    if concepts:
+        msg += f"\n🔑 概念：{', '.join(concepts)}"
+    _send_markdown(user_id, msg)
 
 
 def _process(user_id: str, text: str):

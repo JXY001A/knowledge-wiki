@@ -228,10 +228,9 @@ def _mcp_query(question: str) -> str | None:
         if result and "未在 wiki 中找到" not in result:
             return result
 
-        # 4. Fallback: search → get paths → read full pages
+        # 4. Fallback: search → get paths → read full pages (strip frontmatter!)
         result = _call_tool("search", {"keyword": question}, sid)
         if result and "未找到" not in result:
-            # Parse search result paths and read full page content
             wiki_dir = WIKI_ROOT / "wiki"
             page_paths = re.findall(r"路径:\s*`([^`]+)`", result)
             if page_paths:
@@ -240,17 +239,16 @@ def _mcp_query(question: str) -> str | None:
                     fpath = WIKI_ROOT / path
                     if fpath.exists():
                         text = fpath.read_text()
-                        # Strip frontmatter
+                        # Strip frontmatter — LLM confused by metadata
+                        body = text
                         if text.startswith("---"):
                             end = text.find("---", 3)
-                            body = text[end+3:].strip() if end != -1 else text
-                        else:
-                            body = text
-                        title = fpath.stem
-                        full_texts.append(f"## {title}\n\n{body[:2000]}")
+                            if end != -1:
+                                body = text[end+3:].strip()
+                        full_texts.append(f"## {fpath.stem}\n\n{body[:2000]}")
                 if full_texts:
                     return f"# 查询：{question}\n\n" + "\n\n---\n\n".join(full_texts)
-            return result  # Return raw search result as fallback
+            return result
 
         return None
     except Exception as e:
@@ -472,6 +470,15 @@ def _extract_kv_from_markdown(body: str) -> list[tuple[str, str]]:
     return pairs[:6]
 
 
+def _strip_frontmatter(text: str) -> str:
+    """Remove YAML frontmatter from markdown — prevents LLM from treating metadata as content."""
+    if text.startswith("---"):
+        end = text.find("---", 3)
+        if end != -1:
+            return text[end + 3:].strip()
+    return text
+
+
 def _find_page_path(title: str) -> str | None:
     """Find the file path for a page title in wiki/."""
     import re as _re
@@ -526,14 +533,17 @@ def _call_llm_short(question: str, context: str) -> str | None:
 
 
 def _handle_query(user_id: str, question: str):
-    """MCP retrieval → qwen3:4b → structured template_cards."""
+    """MCP retrieval → qwen2.5:3b → structured template_cards."""
     # Step 1: MCP query for wiki context
     context = _mcp_query(question)
     if not context:
         _send_markdown(user_id, "知识库查询失败，请重试。")
         return
 
-    # Step 2: qwen3:4b JSON structured output
+    # Strip frontmatter so LLM doesn't output metadata as content
+    context = _strip_frontmatter(context)
+
+    # Step 2: qwen2.5:3b JSON structured output
     card_data = _call_llm_json(question, context)
     if not card_data or "cards" not in card_data:
         # Fallback: extract from raw MCP context

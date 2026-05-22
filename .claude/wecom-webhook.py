@@ -301,23 +301,42 @@ def _process(user_id: str, text: str):
 
 
 def _normalize_details(raw: list) -> list[tuple[str, str]]:
-    """Normalize LLM details output: supports [[k,v],...], [k,v,k,v,...], [{k:v},...]."""
+    """Normalize LLM details output for template_card horizontal_content_list.
+
+    Handles these LLM output formats:
+      - [[k,v], [k,v]]         ← ideal array format
+      - [{k:v}, {k:v}]         ← dict per pair
+      - [{"键":"k","值":"v"}]   ← Chinese-labeled dict
+      - [{"key":"k","value":"v"}] ← English-labeled dict
+    """
     if not raw:
         return []
+
     result = []
     for item in raw:
         if isinstance(item, (list, tuple)):
             if len(item) >= 2:
-                result.append((str(item[0]), str(item[1])))
+                result.append((str(item[0])[:20], str(item[1])[:60]))
         elif isinstance(item, dict):
-            for k, v in item.items():
-                result.append((str(k), str(v)))
+            # Detect labeled-pair format: {"键":"k","值":"v"} or {"key":"k","value":"v"}
+            cn_key = item.get("键") or item.get("key") or item.get("name")
+            cn_val = item.get("值") or item.get("value") or item.get("val")
+            if cn_key and cn_val is not None:
+                result.append((str(cn_key)[:20], str(cn_val)[:60]))
+            else:
+                # Plain k:v dict
+                for k, v in item.items():
+                    if k not in ("键", "值", "key", "value", "name", "val"):
+                        result.append((str(k)[:20], str(v)[:60]))
+                    # skip {"键":"k"} entries — already handled above
         elif isinstance(item, str):
-            result.append(("", str(item)))
-    # If odd count of single strings, pair them
-    if len(result) == 0 and all(isinstance(x, str) for x in raw):
+            result.append(("", str(item)[:60]))
+
+    # If we got nothing, try pairing adjacent strings
+    if not result and all(isinstance(x, str) for x in raw):
         for i in range(0, len(raw) - 1, 2):
-            result.append((str(raw[i]), str(raw[i + 1])))
+            result.append((str(raw[i])[:20], str(raw[i + 1])[:60]))
+
     return result[:10]
 
 
@@ -600,13 +619,14 @@ def _call_llm_json(question: str, context: str) -> dict | None:
             "messages": [
                 {"role": "system", "content": (
                     "Output ONLY valid JSON. No other text.\n"
-                    "Format: {\"summary\":\"整体一句话概述\",\"cards\":[{\"title\":\"分类\",\"summary\":\"100-200字摘要\","
-                    "\"details\":[[\"键\",\"值\"]]}]}\n"
+                    "Format: {\"summary\":\"整体概述\",\"cards\":[{\"title\":\"分类\",\"summary\":\"100-200字摘要\","
+                    "\"details\":[[\"键名\",\"值\"],[\"键名2\",\"值2\"]]}]}\n"
+                    "CRITICAL: details must be an array of 2-element arrays: [[\"k\",\"v\"],[\"k\",\"v\"]].\n"
+                    "NEVER use objects like {\"键\":\"k\",\"值\":\"v\"} in details.\n"
                     "Rules:\n"
                     "- summary: one-sentence overall answer (Chinese, 50-100 chars).\n"
                     "- cards: split into 2-5 logical categories.\n"
-                    "- Each card: title=category name, summary=key points (100-200 chars), details=3-8 key-value pairs.\n"
-                    "- Use real data only. No placeholders. Group related facts.\n"
+                    "- Each card: 3-8 detail pairs. Use real data only.\n"
                     "- Always respond in Chinese."
                 )},
                 {"role": "user", "content": f"[Wiki]\n{context}\n\n[Q]\n{question}"},

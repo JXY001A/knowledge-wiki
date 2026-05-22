@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import struct
 import socket
 import subprocess
@@ -20,6 +21,7 @@ import string
 import threading
 import time
 import urllib.request
+import urllib.error
 from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -177,6 +179,56 @@ def _send_template_card(user_id: str, title: str, summary: str,
     except Exception as e:
         print(f"[wecom] template_card error: {e}", flush=True)
         return False
+
+
+# ---- MCP Client ----
+
+def _mcp_query(question: str) -> str | None:
+    """Call wiki-mcp query tool on localhost:9300 via MCP streamable HTTP.
+
+    Returns raw markdown context from matching wiki pages, or None on failure.
+    """
+    base = "http://localhost:9300/mcp"
+    hdr = {"Content-Type": "application/json"}
+
+    try:
+        # 1. Initialize session
+        req = urllib.request.Request(base,
+            data=json.dumps({"jsonrpc": "2.0", "id": "init", "method": "initialize",
+                "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                    "clientInfo": {"name": "wecom-webhook", "version": "1.0"}}}).encode(),
+            headers=hdr)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            session_id = resp.headers.get("Mcp-Session-Id", "")
+        if not session_id:
+            return None
+
+        # 2. Send initialized notification
+        req = urllib.request.Request(base,
+            data=json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}).encode(),
+            headers={**hdr, "Mcp-Session-Id": session_id})
+        urllib.request.urlopen(req, timeout=10)
+
+        # 3. Call query tool
+        req = urllib.request.Request(base,
+            data=json.dumps({"jsonrpc": "2.0", "id": "q", "method": "tools/call",
+                "params": {"name": "query", "arguments": {"question": question}}}).encode(),
+            headers={**hdr, "Mcp-Session-Id": session_id, "Accept": "text/event-stream"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = resp.read().decode()
+
+        # Parse SSE response
+        for line in body.split("\n"):
+            if line.startswith("data: "):
+                data = json.loads(line[6:])
+                if "result" in data:
+                    for c in data["result"].get("content", []):
+                        if c.get("type") == "text":
+                            return c["text"]
+        return None
+    except Exception as e:
+        print(f"[wecom] MCP query failed: {e}", flush=True)
+        return None
 
 
 # ---- Message Processing ----
@@ -391,63 +443,6 @@ def _find_page_path(title: str) -> str | None:
     return None
 
 
-def _call_llm_detailed(question: str, context: str) -> str:
-    """Call Ollama for detailed markdown answer."""
-    try:
-        body = json.dumps({
-            "model": "qwen2.5:1.5b",
-            "messages": [
-                {"role": "system", "content": (
-                    "你是知识库助手。基于提供的 wiki 资料详细回答用户问题。\n\n"
-                    "要求：\n"
-                    "- 用中文回答，详细但不过于啰嗦\n"
-                    "- 用 ## 标题分段\n"
-                    "- 用 **粗体** 强调关键术语\n"
-                    "- 用 `代码` 标记技术名词\n"
-                    "- 用 - 列表展示多项信息\n"
-                    "- 不要用表格（|...|），不要用代码块（```）\n"
-                    "- 只基于提供的资料，不要编造\n"
-                    "- 200-400字"
-                )},
-                {"role": "user", "content": f"[资料]\n{context}\n\n[问题]\n{question}"},
-            ],
-            "stream": False,
-            "options": {"num_predict": 1500, "temperature": 0.3},
-        }).encode()
-        req = urllib.request.Request("http://localhost:11434/api/chat", data=body, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            msg = json.loads(resp.read()).get("message", {})
-            content = msg.get("content", "").strip()
-            if not content:
-                print(f"[wecom] qwen3 content empty, thinking={len(msg.get('thinking',''))}chars", flush=True)
-                # Retry with higher num_predict
-                return _call_llm_fallback(question, context)
-            return _clean_markdown(content)
-    except Exception as e:
-        print(f"[wecom] LLM detailed failed: {e}", flush=True)
-        return _call_llm_fallback(question, context)
-
-
-def _call_llm_fallback(question: str, context: str) -> str:
-    """Fallback: llama3.2:1b quick summary."""
-    try:
-        body = json.dumps({
-            "model": "llama3.2:1b",
-            "messages": [
-                {"role": "system", "content": "基于资料回答，中文，100-200字，不要用表格。"},
-                {"role": "user", "content": f"资料:\n{context[:1500]}\n\n问题: {question}"},
-            ],
-            "stream": False,
-            "options": {"num_predict": 200, "temperature": 0.1},
-        }).encode()
-        req = urllib.request.Request("http://localhost:11434/api/chat", data=body, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            content = json.loads(resp.read()).get("message", {}).get("content", "").strip()
-            return content if content else context[:800]
-    except Exception:
-        return context[:800]
-
-
 def _clean_markdown(text: str) -> str:
     """Clean LLM markdown for WeChat display."""
     import re
@@ -465,16 +460,16 @@ def _clean_markdown(text: str) -> str:
 
 
 def _call_llm_short(question: str, context: str) -> str | None:
-    """Call Ollama for a short one-sentence summary (no JSON)."""
+    """Call qwen3:4b for a short one-sentence summary."""
     try:
         body = json.dumps({
-            "model": "llama3.2:1b",
+            "model": "qwen3:4b",
             "messages": [
                 {"role": "system", "content": "Answer in ONE short Chinese sentence based on the wiki content. No formatting."},
-                {"role": "user", "content": f"Wiki:\n{context[:1200]}\n\nQ: {question}"},
+                {"role": "user", "content": f"Wiki:\n{context[:2000]}\n\nQ: {question}"},
             ],
             "stream": False,
-            "options": {"num_predict": 80, "temperature": 0.1},
+            "options": {"num_predict": 120, "temperature": 0.1},
         }).encode()
         req = urllib.request.Request("http://localhost:11434/api/chat", data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -485,80 +480,64 @@ def _call_llm_short(question: str, context: str) -> str | None:
 
 
 def _handle_query(user_id: str, question: str):
-    """RAG query → structured JSON → template_card (or markdown fallback)."""
-    wiki_dir = WIKI_ROOT / "wiki"
-    if not wiki_dir.exists():
-        _send_markdown(user_id, "知识库目录不存在")
+    """MCP retrieval → qwen3:4b → structured template_cards."""
+    # Step 1: MCP query for wiki context
+    context = _mcp_query(question)
+    if not context:
+        _send_markdown(user_id, "知识库查询失败，请重试。")
         return
 
-    keywords = question.lower().split()
-    results = []
-    for md in sorted(wiki_dir.rglob("*.md")):
-        text = md.read_text()
-        text_lower = text.lower()
-        score = sum(1 for kw in keywords if kw in text_lower)
-        path_lower = str(md).lower()
-        score += sum(2 for kw in keywords if kw in path_lower)
-        if score > 0:
-            title = md.stem
-            if text.startswith("---"):
-                end = text.find("---", 3)
-                if end != -1:
-                    for line in text[3:end].splitlines():
-                        if line.startswith("title:"):
-                            title = line.split(":", 1)[1].strip()
-                            break
-            body = text.split("---", 2)[-1].strip() if text.count("---") >= 2 else text
-            results.append((score, title, body[:1000]))
-
-    results.sort(key=lambda x: x[0], reverse=True)
-    if not results:
-        _send_markdown(user_id, f"知识库中暂无「{question}」相关内容。\n\n发送链接或内容可直接保存。")
+    # Step 2: qwen3:4b JSON structured output
+    card_data = _call_llm_json(question, context)
+    if not card_data or "cards" not in card_data:
+        # Fallback: extract from raw MCP context
+        wiki_dir = WIKI_ROOT / "wiki"
+        if not wiki_dir.exists():
+            _send_markdown(user_id, "知识库目录不存在")
+            return
+        # Quick keyword search as last resort
+        keywords = question.lower().split()
+        results = []
+        for md in sorted(wiki_dir.rglob("*.md")):
+            text = md.read_text()
+            score = sum(1 for kw in keywords if kw in text.lower())
+            score += sum(2 for kw in keywords if kw in str(md).lower())
+            if score > 0:
+                results.append((score, md.stem, text[:800]))
+        results.sort(key=lambda x: x[0], reverse=True)
+        if not results:
+            _send_markdown(user_id, f"知识库中暂无「{question}」相关内容。")
+            return
+        top = results[0]
+        _send_template_card(user_id,
+            title=top[1], summary=_extract_first_meaningful_text(top[2]),
+            details=_extract_kv_from_markdown(top[2]) or _extract_section_kv(top[2]),
+            source_desc=top[1])
         return
 
-    top_page = results[0][1]
-    top_body = results[0][2]
+    # Step 3: Send cards
+    cards = card_data["cards"]
+    top_page = _get_top_page_titles(question)
+    for i, card in enumerate(cards[:8]):
+        if i > 0:
+            time.sleep(0.8)
+        details = _normalize_details(card.get("details", []))
+        summary = card.get("summary", "")
+        if not summary:
+            summary = _call_llm_short(f"{card.get('title', question)} 的核心信息",
+                                       json.dumps(details, ensure_ascii=False))
+        _send_template_card(user_id,
+            title=card.get("title", question),
+            summary=summary,
+            details=details,
+            source_desc=f"{top_page} ({i + 1}/{len(cards)})")
 
-    # Split top page into sections by ## headers
-    sections = _split_by_sections(top_body, top_page)
-    if len(sections) <= 1:
-        # Single section: use JSON LLM card (proven reliable)
-        context = "\n\n".join(f"# {t}\n{b}" for _, t, b in results[:3])
-        card_data = _call_llm_json(question, context)
-        if card_data:
-            detail_pairs = _normalize_details(card_data.get("details", []))
-            _send_template_card(user_id,
-                title=card_data.get("title", question),
-                summary=card_data.get("summary", ""),
-                details=detail_pairs,
-                source_desc=top_page)
-        else:
-            _send_template_card(user_id, title=top_page,
-                summary=_extract_first_meaningful_text(top_body),
-                details=_extract_kv_from_markdown(top_body) or _extract_section_kv(top_body),
-                source_desc=top_page)
-    else:
-        # Filter out noise sections (references, related links, etc.)
-        noise_titles = {"相关", "参考资料", "参考", "see also", "references", "related", "外部链接"}
-        sections = [(t, b) for t, b in sections if t.strip().lower() not in noise_titles and not b.strip().startswith("[[")]
-
-        # Multiple sections: one card per section (with delay to prevent reordering)
-        for i, (sec_title, sec_body) in enumerate(sections[:8]):
-            if i > 0:
-                time.sleep(0.8)  # 800ms gap to ensure WeChat delivers in order
-            kv = _extract_kv_from_markdown(sec_body)
-            if not kv:
-                kv = [(sec_title, _extract_first_meaningful_text(sec_body)[:80])]
-            desc = _extract_first_meaningful_text(sec_body)
-            # Use LLM for richer summary of each section
-            llm_desc = _call_llm_short(f"{sec_title} 的核心信息", sec_body[:1000])
-            _send_template_card(user_id,
-                title=sec_title,
-                summary=llm_desc or desc[:200],
-                details=kv[:6],
-                source_desc=f"{top_page} ({i + 1}/{len(sections)})")
-
-    # Template card is sufficient — no supplementary markdown needed
+    # Supplementary markdown if content is rich
+    overall = card_data.get("summary", "")
+    if overall and len(overall) > 100:
+        clean = _clean_markdown(overall)
+        if len(clean) > 50:
+            _send_markdown(user_id, clean)
 
 
 def _get_top_page_titles(query: str) -> str:
@@ -585,61 +564,28 @@ def _get_top_page_titles(query: str) -> str:
     return ", ".join(t for _, t in results[:5]) if results else "知识库"
 
 
-def _rag_query(question: str) -> str:
-    """RAG: search wiki → LLM → answer."""
-    wiki_dir = WIKI_ROOT / "wiki"
-    if not wiki_dir.exists():
-        return "知识库目录不存在"
-
-    keywords = question.lower().split()
-    results = []
-    for md in sorted(wiki_dir.rglob("*.md")):
-        text = md.read_text()
-        text_lower = text.lower()
-        score = sum(1 for kw in keywords if kw in text_lower)
-        path_lower = str(md).lower()
-        score += sum(2 for kw in keywords if kw in path_lower)
-        if score > 0:
-            title = md.stem
-            if text.startswith("---"):
-                end = text.find("---", 3)
-                if end != -1:
-                    for line in text[3:end].splitlines():
-                        if line.startswith("title:"):
-                            title = line.split(":", 1)[1].strip()
-                            break
-            body = text.split("---", 2)[-1].strip() if text.count("---") >= 2 else text
-            results.append((score, title, body[:1000]))
-
-    results.sort(key=lambda x: x[0], reverse=True)
-    if not results:
-        return "知识库中暂无相关信息。\n\n发送链接或内容可直接保存到知识库。"
-
-    context = "\n\n".join(f"## {t}\n{b}" for _, t, b in results[:5])
-    return _call_llm(question, context)
-
-
 def _call_llm_json(question: str, context: str) -> dict | None:
-    """Call Ollama to produce structured JSON for template_card."""
+    """Call qwen3:4b to produce structured JSON for template_card."""
     import re
     try:
         body = json.dumps({
-            "model": "qwen2.5:1.5b",
+            "model": "qwen3:4b",
             "messages": [
                 {"role": "system", "content": (
                     "Output ONLY valid JSON. No other text.\n"
-                    "Format: {\"cards\":[{\"title\":\"分类1\",\"summary\":\"100-200 char summary\","
-                    "\"details\":[[\"k1\",\"v1\"],[\"k2\",\"v2\"]]}]}\n"
+                    "Format: {\"summary\":\"整体一句话概述\",\"cards\":[{\"title\":\"分类\",\"summary\":\"100-200字摘要\","
+                    "\"details\":[[\"键\",\"值\"]]}]}\n"
                     "Rules:\n"
-                    "- Split content into 2-4 logical categories (e.g. hardware, network, services).\n"
-                    "- Each card: title=category name, summary=key points, details=key-value pairs.\n"
-                    "- Details per card: 3-8 pairs. Use real data only. No placeholders.\n"
-                    "- Group related facts into the same card."
+                    "- summary: one-sentence overall answer (Chinese, 50-100 chars).\n"
+                    "- cards: split into 2-5 logical categories.\n"
+                    "- Each card: title=category name, summary=key points (100-200 chars), details=3-8 key-value pairs.\n"
+                    "- Use real data only. No placeholders. Group related facts.\n"
+                    "- Always respond in Chinese."
                 )},
                 {"role": "user", "content": f"[Wiki]\n{context}\n\n[Q]\n{question}"},
             ],
             "stream": False,
-            "options": {"num_predict": 1200, "temperature": 0.1},
+            "options": {"num_predict": 2000, "temperature": 0.1},
         }).encode()
 
         req = urllib.request.Request(
@@ -705,57 +651,6 @@ def _call_llm_json(question: str, context: str) -> dict | None:
     except Exception as e:
         print(f"[wecom] LLM JSON failed: {e}", flush=True)
         return None
-
-
-def _call_llm(question: str, context: str) -> str:
-    """Call Ollama for RAG synthesis (markdown fallback)."""
-    try:
-        body = json.dumps({
-            "model": "llama3.2:1b",
-            "messages": [
-                {"role": "system", "content": (
-                    "You are a knowledge base assistant. Answer based ONLY on the provided wiki content. "
-                    "Do not make up information. Answer in Chinese. Be concise and structured.\n\n"
-                    "IMPORTANT formatting rules:\n"
-                    "- Use ## for section titles\n"
-                    "- Use **bold** for key terms\n"
-                    "- Use `code` for technical terms\n"
-                    "- Use > for quotes\n"
-                    "- NEVER use markdown tables (|...|). Use bullet lists instead.\n"
-                    "- NEVER use code blocks (```). Use inline `code` instead.\n"
-                    "- Use - or * for lists\n"
-                    "- Keep line breaks between sections\n"
-                    "- No HTML tags"
-                )},
-                {"role": "user", "content": f"[Wiki Content]\n{context}\n\n[Question]\n{question}"},
-            ],
-            "stream": False,
-            "options": {"num_predict": 600, "temperature": 0.1},
-        }).encode()
-
-        req = urllib.request.Request(
-            "http://localhost:11434/api/chat",
-            data=body, headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            content = json.loads(resp.read()).get("message", {}).get("content", "")
-            if not content.strip():
-                return "未能生成回答，请重试。"
-            import re
-            content = re.sub(r"```[\s\S]*?```", lambda m: m.group(0).replace("\n", " ").strip("`"), content)
-            lines = content.split("\n")
-            cleaned = []
-            for line in lines:
-                s = line.strip()
-                if re.match(r"^\|.+\|$", s) or re.match(r"^[\s|:\-]+$", s):
-                    continue
-                cleaned.append(line)
-            content = "\n".join(cleaned)
-            content = re.sub(r"<[^>]+>", "", content)
-            return content
-    except Exception as e:
-        print(f"[wecom] LLM failed: {e}", flush=True)
-        return context[:800] + "\n\n> （AI 回答生成失败，以上为原始资料摘要）"
 
 
 # ---- Routes ----

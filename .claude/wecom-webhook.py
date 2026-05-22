@@ -184,9 +184,7 @@ def _send_template_card(user_id: str, title: str, summary: str,
 # ---- MCP Client ----
 
 def _mcp_query(question: str) -> str | None:
-    """Call wiki-mcp on localhost:9300 via MCP streamable HTTP.
-    Uses query first, falls back to search if query returns empty.
-    """
+    """Query wiki via MCP, with full-page-content fallback for search results."""
     base = "http://localhost:9300/mcp"
     accept = "application/json, text/event-stream"
     hdr = {"Content-Type": "application/json", "Accept": accept}
@@ -208,7 +206,7 @@ def _mcp_query(question: str) -> str | None:
         return None
 
     try:
-        # 1. Initialize
+        # 1. Initialize session
         req = urllib.request.Request(base,
             data=json.dumps({"jsonrpc": "2.0", "id": "init", "method": "initialize",
                 "params": {"protocolVersion": "2024-11-05", "capabilities": {},
@@ -225,15 +223,34 @@ def _mcp_query(question: str) -> str | None:
             headers={**hdr, "Mcp-Session-Id": sid})
         urllib.request.urlopen(req, timeout=10)
 
-        # 3. Try query first (title+tag match)
+        # 3. Try query (title+tag match → full content)
         result = _call_tool("query", {"question": question}, sid)
         if result and "未在 wiki 中找到" not in result:
             return result
 
-        # 4. Fallback: full-text search
+        # 4. Fallback: search → get paths → read full pages
         result = _call_tool("search", {"keyword": question}, sid)
         if result and "未找到" not in result:
-            return result
+            # Parse search result paths and read full page content
+            wiki_dir = WIKI_ROOT / "wiki"
+            page_paths = re.findall(r"路径:\s*`([^`]+)`", result)
+            if page_paths:
+                full_texts = []
+                for path in page_paths[:5]:
+                    fpath = WIKI_ROOT / path
+                    if fpath.exists():
+                        text = fpath.read_text()
+                        # Strip frontmatter
+                        if text.startswith("---"):
+                            end = text.find("---", 3)
+                            body = text[end+3:].strip() if end != -1 else text
+                        else:
+                            body = text
+                        title = fpath.stem
+                        full_texts.append(f"## {title}\n\n{body[:2000]}")
+                if full_texts:
+                    return f"# 查询：{question}\n\n" + "\n\n---\n\n".join(full_texts)
+            return result  # Return raw search result as fallback
 
         return None
     except Exception as e:
@@ -473,7 +490,7 @@ def _call_llm_short(question: str, context: str) -> str | None:
     """Call qwen3:4b for a short one-sentence summary."""
     try:
         body = json.dumps({
-            "model": "qwen3:4b",
+            "model": "qwen2.5:3b",
             "messages": [
                 {"role": "system", "content": "Answer in ONE short Chinese sentence based on the wiki content. No formatting."},
                 {"role": "user", "content": f"Wiki:\n{context[:2000]}\n\nQ: {question}"},
@@ -579,7 +596,7 @@ def _call_llm_json(question: str, context: str) -> dict | None:
     import re
     try:
         body = json.dumps({
-            "model": "qwen3:4b",
+            "model": "qwen2.5:3b",
             "messages": [
                 {"role": "system", "content": (
                     "Output ONLY valid JSON. No other text.\n"

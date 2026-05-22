@@ -2,7 +2,7 @@
 title: Wiki 目录
 tags: [目录, 导航]
 created: 2026-05-15
-updated: 2026-05-18
+updated: 2026-05-22
 ---
 
 # Wiki 目录
@@ -54,6 +54,7 @@ updated: 2026-05-18
 ## 综合分析
 
 - [[Wiki 服务化部署方案]]
+- [[知识库系统全链路架构]]
 
 ### 基础设施
 
@@ -62,6 +63,7 @@ updated: 2026-05-18
 
 ## 最近更新
 
+- 2026-05-22：synthesis 知识库系统全链路架构 —— 完整技术架构文档
 - 2026-05-18：ingest Agent Skill 规范与设计模式 —— 4 个新页面
 - 2026-05-17：ingest Agent 知识管理与自进化
 - 2026-05-16：ingest MCP Vision Server 方案

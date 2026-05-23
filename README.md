@@ -43,5 +43,32 @@ LLM 会查阅 wiki 页面并综合回答，附带 `[[wikilink]]` 引用。
 
 - `raw/` — 源文档（人类管理，不可变）
 - `wiki/` — LLM 编译的知识页面
-- `CLAUDE.md` — [Claude Code](https://claude.ai/claude-code) Schema
-- `AGENTS.md` — 兼容 [AGENTS.md 规范](https://github.com/anthropics/AGENTS-md-spec)的共享 Schema（Codex、Copilot、Gemini CLI、OpenCode 等）
+- `src/knowledge_wiki/` — Python 项目代码
+- `skills/` — Agent 技能注册表
+- `templates/` — 页面类型模板
+- `deploy/` — systemd 服务单元 + 部署脚本
+- `AGENTS.md` — 共享 wiki Schema
+- `CLAUDE.md` — Claude Code 专属指令
+
+## 开发者 Setup
+
+```bash
+# 1. 创建虚拟环境
+python3 -m venv .venv && source .venv/bin/activate
+
+# 2. 安装依赖
+pip install -e .
+
+# 3. 运行测试
+python -m pytest tests/ -v
+
+# 4. 启动服务
+python -m knowledge_wiki serve    # MCP Server → :9300
+python -m knowledge_wiki webhook  # 企业微信 Bot → :9400
+```
+
+### 部署（DevMechin）
+
+```bash
+ssh jxy001a1@192.168.71.127 "bash ~/code/knowledge-wiki/deploy/setup.sh"
+```

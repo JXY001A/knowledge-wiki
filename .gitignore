@@ -11,6 +11,16 @@
 # Node.js
 node_modules/
 
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+
+# Environment
+.env
+
 # Temporary
 *.tmp
 *.bak

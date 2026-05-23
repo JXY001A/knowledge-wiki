@@ -1,0 +1,15 @@
+[Unit]
+Description=Wiki MCP Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/jxy001a1/code/knowledge-wiki/.venv/bin/python3 -m knowledge_wiki serve
+WorkingDirectory=/home/jxy001a1/code/knowledge-wiki
+Restart=always
+RestartSec=5
+Environment="PYTHONPATH=/home/jxy001a1/code/knowledge-wiki/src"
+EnvironmentFile=/home/jxy001a1/code/knowledge-wiki/.env
+
+[Install]
+WantedBy=default.target

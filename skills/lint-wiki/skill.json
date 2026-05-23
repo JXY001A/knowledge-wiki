@@ -1,0 +1,10 @@
+{
+  "name": "lint-wiki",
+  "version": "1.0",
+  "description": "对 wiki 知识库进行健康检查：死链、孤页、过时页面、标签缺失、未处理资料",
+  "tier": 2,
+  "model": "local",
+  "tools": ["lint"],
+  "triggers": ["检查", "健康", "lint", "巡检", "诊断", "审查"],
+  "dependencies": []
+}

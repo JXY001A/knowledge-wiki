@@ -1,0 +1,10 @@
+{
+  "name": "search-wiki",
+  "version": "1.0",
+  "description": "在 wiki 知识库中按关键词搜索，返回匹配页面和摘录",
+  "tier": 1,
+  "model": "local",
+  "tools": ["search"],
+  "triggers": ["搜索", "查找", "search", "find", "有哪些", "找一下"],
+  "dependencies": []
+}

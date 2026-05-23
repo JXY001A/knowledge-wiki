@@ -1,0 +1,10 @@
+{
+  "name": "ingest-article",
+  "version": "1.0",
+  "description": "摄取 URL 文章：下载 → DeepSeek 分析 → 生成 wiki 页面 → 更新目录",
+  "tier": 1,
+  "model": "deepseek",
+  "tools": ["ingest"],
+  "triggers": ["摄取", "ingest", "整理", "收录", "分析这篇文章", "处理链接"],
+  "dependencies": []
+}

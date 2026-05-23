@@ -178,19 +178,62 @@ def handle_inbox_text(user_id: str, text: str, send_md):
 
 
 def process_message(user_id: str, text: str, send_md, send_tpl):
-    """处理收到的消息：? 查询 / URL 摄取 / 文本保存."""
+    """处理收到的消息 — 通过 Skill 引擎路由分发.
+
+    流程：
+    1. 提取意图（? 查询、URL、纯文本）
+    2. 技能引擎匹配最合适的 Skill
+    3. 执行 Skill 的 impl.py
+    4. Skill 内部通过 send_md / send_tpl 回调回复用户
+    """
+    from knowledge_wiki.skill.engine import match_skill
+    from knowledge_wiki.skill.planner import execute_skill
+
     try:
         stripped = text.strip()
+
+        # 构建执行上下文
+        ctx = {
+            "user_id": user_id,
+            "input_text": stripped,
+            "send_md": send_md,
+            "send_tpl": send_tpl,
+        }
+
+        # 意图 → 技能匹配
+        skill = None
+
         if stripped.startswith("?"):
             question = stripped[1:].strip()
             if not question:
                 send_md(user_id, "请输入查询内容，如：`? DevMechin GPU`")
                 return
-            handle_query_msg(user_id, question, send_md, send_tpl)
+            ctx["query"] = question
+            skill = match_skill(question)
+
         elif is_url(stripped):
-            handle_url_ingest(user_id, stripped, send_md, send_tpl)
+            skill = match_skill(stripped)
+
         else:
-            handle_inbox_text(user_id, text, send_md)
+            # 纯文本：尝试匹配显式触发词，否则回退到 save-note
+            skill = match_skill(stripped)  # "记录" "保存" → save-note
+
+        # 技能回退链
+        if not skill:
+            if stripped.startswith("?"):
+                # query-knowledge 作为 ? 查询的兜底
+                execute_skill("query-knowledge", ctx)
+            elif is_url(stripped):
+                execute_skill("ingest-article", ctx)
+            else:
+                execute_skill("save-note", ctx)
+        else:
+            result = execute_skill(skill.name, ctx)
+            # 某些技能通过回调发送消息（send_md），不需要返回文本
+            # 如果 execute 返回非空文本且没有 send_md，则用 send_md 发送
+            if result and result.strip() and not ctx.get("_handled"):
+                send_md(user_id, result[:3000])
+
     except Exception as e:
         print(f"[wecom] process error: {e}", flush=True)
         import traceback

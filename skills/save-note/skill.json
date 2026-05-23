@@ -1,0 +1,10 @@
+{
+  "name": "save-note",
+  "version": "1.0",
+  "description": "保存文本笔记到 raw/收件箱/，等待后续 ingest 处理",
+  "tier": 1,
+  "model": "local",
+  "tools": [],
+  "triggers": ["保存", "记录", "笔记", "save", "note"],
+  "dependencies": []
+}

@@ -1,0 +1,10 @@
+{
+  "name": "query-knowledge",
+  "version": "1.0",
+  "description": "基于 wiki 知识库回答用户问题，MCP 检索 + LLM 综合",
+  "tier": 1,
+  "model": "local",
+  "tools": ["query", "search"],
+  "triggers": ["查询", "问答", "是什么", "怎么", "为什么", "介绍", "解释", "说明", "对比"],
+  "dependencies": []
+}

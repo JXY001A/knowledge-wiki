@@ -2,12 +2,8 @@
 
 
 def run_server(host: str | None = None, port: int | None = None):
-    """启动 MCP Server."""
-    from knowledge_wiki.config import settings
+    """启动 MCP Server（host/port 由 config/settings 确定）."""
     from knowledge_wiki.mcp.server import create_server
 
-    host = host or settings.mcp_host
-    port = port or settings.mcp_port
-
     mcp = create_server()
-    mcp.run(transport="streamable-http", host=host, port=port)
+    mcp.run(transport="streamable-http")

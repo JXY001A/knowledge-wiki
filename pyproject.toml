@@ -1,27 +1,113 @@
+# ============================================================================
+# pyproject.toml — Python 项目元数据与构建配置
+# ============================================================================
+# 本文件是 Python 生态的统一配置文件（PEP 621 / PEP 517 / PEP 518），
+# 替代了旧式的 setup.py、setup.cfg、MANIFEST.in 等多文件方案。
+# 三个核心职责：
+#   1. [project]         — 项目元数据与依赖（PEP 621）
+#   2. [build-system]    — 构建工具链声明（PEP 517）
+#   3. [tool.*]          — 第三方工具的专属配置（setuptools、pytest 等）
+
+
+# ============================================================================
+# [project] — PEP 621 项目元数据
+# ============================================================================
+# 定义包的基本信息，被 pip、PyPI、构建后端统一消费。
+# 字段规范见 https://peps.python.org/pep-0621/
 [project]
+
+# 包的 PyPI 注册名，也是 pip install / pip list 使用的标识符。
+# 只能包含连字符、下划线、字母、数字，不含空格。
 name = "knowledge-wiki"
+
+# 语义化版本号（SemVer）：MAJOR.MINOR.PATCH
+#   MAJOR — 不兼容的 API 变更
+#   MINOR — 向后兼容的新功能
+#   PATCH — 向后兼容的 bug 修复
 version = "1.0.0"
+
+# 项目的一句话描述，会展示在 PyPI 页面和 pip search 结果中。
 description = "AI 自进化知识库系统 — MCP Server + 企业微信 Bot + Agent 技能引擎"
+
+# 最低 Python 版本约束。>=3.12 意味着不支持 3.11 及以下版本。
+# 锁定 3.12+ 可以利用新版语法特性（如 type 别名）和性能改进，
+# 同时避免为旧版本维护兼容代码的负担。
 requires-python = ">=3.12"
+
+# 运行时依赖声明。pip install 这个包时会自动安装这些依赖。
+# 每个依赖使用 PEP 440 版本规范：>= 表示最低版本（不锁定上限）。
 dependencies = [
+    # Web 框架，驱动企业微信 Bot 的 HTTP webhook 服务（webhook/ 模块）
     "flask>=3.0",
+
+    # Model Context Protocol SDK，实现 MCP Server（mcp/ 模块），
+    # 使外部 AI 工具能通过标准协议调用 wiki 能力
     "mcp>=1.0",
+
+    # YAML 解析库，用于读写 wiki 页面的 YAML frontmatter（wiki/ 模块）
     "pyyaml>=6.0",
+
+    # 加密库，用于企业微信回调消息的 AES 解密（企微消息体是加密传输的）
     "pycryptodome>=3.20",
+
+    # 现代 HTTP 客户端，支持同步和异步请求，用于调用 DeepSeek API 和 Ollama（llm/ 模块）
     "httpx>=0.27",
+
+    # 基于 Pydantic 的配置管理，从环境变量和 .env 文件加载运行时配置
     "pydantic-settings>=2.0",
 ]
 
+
+# ============================================================================
+# [project.scripts] — 命令行入口点
+# ============================================================================
+# 将 Python 函数注册为终端可直接执行的命令。
+# 格式：命令名 = "模块路径:函数名"
+# pip install 后，终端输入 kw-server 即可运行，等价于 python -m knowledge_wiki。
 [project.scripts]
 kw-server = "knowledge_wiki.__main__:main"
 
+
+# ============================================================================
+# [build-system] — PEP 517 构建工具链声明
+# ============================================================================
+# 告诉 pip/build 在构建这个包之前需要安装什么工具，以及使用哪个构建后端。
+# 构建依赖与 [project].dependencies 分离——前者只在构建时需要，后者是运行时需要。
 [build-system]
+
+# 构建该包前必须先安装的依赖（仅构建阶段使用，不随包分发）
 requires = ["setuptools>=75"]
+
+# 构建后端入口。setuptools.build_meta 是 setuptools 的 PEP 517 兼容接口。
+# pip install -e . 时，pip 调用此接口来生成 wheel、安装包、处理可编辑模式。
 build-backend = "setuptools.build_meta"
 
+
+# ============================================================================
+# [tool.setuptools.packages.find] — setuptools 包发现配置
+# ============================================================================
+# tool.setuptools 是 setuptools 在 pyproject.toml 中的专属配置命名空间。
+# PEP 621 的 [project] 无法表达的 setuptools 特有配置都放在这里。
 [tool.setuptools.packages.find]
+
+# 指定从 src/ 目录下自动发现 Python 包（而非项目根目录）。
+# 这是 "src layout" 的标准实践：
+#   - 源码隔离在 src/ 下，避免意外导入未安装的包
+#   - 确保测试运行时使用的是安装后的包，而非源码目录
 where = ["src"]
 
+
+# ============================================================================
+# [tool.pytest.ini_options] — Pytest 配置
+# ============================================================================
+# 在 pyproject.toml 中配置 pytest（替代传统的 pytest.ini / tox.ini）。
+# 字段名与 pytest.ini 一致，放在 [tool.pytest.ini_options] 下。
 [tool.pytest.ini_options]
+
+# 测试文件搜索目录。显式限定只在 tests/ 下查找 test_*.py，
+# 避免扫到其他目录的无关文件，加快 pytest 启动时的收集速度。
 testpaths = ["tests"]
+
+# 将 src/ 添加到 sys.path。这样测试文件中 import 项目模块时
+# 无需手动 sys.path.insert，直接 from knowledge_wiki.xxx import yyy 即可。
 pythonpath = ["src"]

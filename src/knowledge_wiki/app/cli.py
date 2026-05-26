@@ -4,12 +4,17 @@
 # 本模块是 knowledge-wiki 的命令行入口，负责解析用户输入的终端命令并路由到
 # 对应的服务启动函数。使用 Python 标准库 argparse 实现子命令风格的 CLI。
 #
+# 三函数结构：
+#   build_parser() → 纯函数，定义接口（可独立测试）
+#   handle(args)   → 纯路由，根据解析结果分发（可独立测试）
+#   cli()          → 入口，组装前两步
+#
 # 流程：
 #   终端输入 kw-server <子命令> [--host HOST] [--port PORT]
-#     → cli() 解析参数并提取子命令名
-#     → 子命令为 "serve"   → 懒加载 server 模块，启动 MCP Server
-#     → 子命令为 "webhook" → 懒加载 webhook 模块，启动企业微信 Bot
-#     → 无子命令           → 打印帮助信息，退出码 1
+#     → cli() 调用 build_parser().parse_args()
+#     → 子命令为 "serve"   → handle() 懒加载 server 模块，启动 MCP Server
+#     → 子命令为 "webhook" → handle() 懒加载 webhook 模块，启动企业微信 Bot
+#     → 无子命令           → handle() 打印帮助信息，退出码 1
 #
 # 使用示例：
 #   kw-server serve                    # 启动 MCP Server（默认 127.0.0.1:9300）
@@ -17,18 +22,18 @@
 #   kw-server webhook --host 0.0.0.0   # 启动 Webhook（监听所有网卡）
 # ============================================================================
 
-# argparse：Python 标准库，用于解析命令行参数
+# argparse：Python 标准库，用于定义并解析命令行参数
 import argparse
 
 # sys：Python 标准库，提供 exit() 终止进程
 import sys
 
 
-def cli():
-    """命令行解析入口。
+def build_parser() -> argparse.ArgumentParser:
+    """构建 CLI 参数解析器。
 
-    本函数由 pyproject.toml 的 [project.scripts] 注册为 kw-server 命令，
-    终端执行 kw-server 时直接调用此函数。
+    纯函数：只定义接口形状，不解析参数，不执行任何副作用。
+    返回值可独立用于单元测试，验证参数定义是否正确。
     """
     # ---------- 根解析器 ----------
     # ArgumentParser 是命令行参数的顶层容器，负责解析原始 sys.argv
@@ -68,11 +73,15 @@ def cli():
         "--port", type=int, default=None, help="监听端口（默认 9400）"
     )
 
-    # ---------- 参数解析 ----------
-    # parse_args() 读取 sys.argv，匹配子命令和参数，返回 Namespace 对象
-    args = parser.parse_args()
+    return parser
 
-    # ---------- 命令路由 ----------
+
+def handle(args: argparse.Namespace) -> None:
+    """根据解析后的参数路由到对应的服务启动函数。
+
+    纯路由函数：接收已解析的参数对象，执行对应的服务入口。
+    模块导入使用懒加载，避免冷启动时加载所有依赖。
+    """
     if args.command == "serve":
         # 懒加载：只有用户执行 serve 命令时才导入 server 模块，
         # 避免启动时加载所有模块，降低 CLI 的冷启动延迟
@@ -89,5 +98,19 @@ def cli():
 
     else:
         # 未提供任何子命令时，打印帮助信息并退出（退出码 1 表示异常终止）
-        parser.print_help()
+        # 注意：argparse 在用户输入错误子命令时会在 parse_args() 阶段拦截并 exit，
+        # 此分支只处理"没有任何子命令"的情况
+        build_parser().print_help()
         sys.exit(1)
+
+
+def cli():
+    """命令行入口。
+
+    本函数由 pyproject.toml 的 [project.scripts] 注册为 kw-server 命令，
+    终端执行 kw-server 时直接调用此函数。职责仅是将 build_parser 和 handle
+    串联起来。
+    """
+    # 构建解析器 → 解析 sys.argv → 路由执行
+    args = build_parser().parse_args()
+    handle(args)

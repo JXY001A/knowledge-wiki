@@ -3,7 +3,6 @@
 import html as html_mod
 import json
 import re
-import time
 import urllib.request
 import urllib.error
 from datetime import datetime
@@ -15,9 +14,9 @@ from knowledge_wiki.wiki.git import commit_and_push
 from knowledge_wiki.wiki.frontmatter import strip_frontmatter
 from knowledge_wiki.wiki.builder import build_source_page, build_concept_page, extract_concept_names
 from knowledge_wiki.wiki.log import append_ingest_log
-from knowledge_wiki.wiki.search import keyword_search, get_top_page_titles
+from knowledge_wiki.wiki.search import keyword_search
 from knowledge_wiki.llm.deepseek import call_ingest
-from knowledge_wiki.llm.ollama import call_json, call_short
+from knowledge_wiki.llm.ollama import call_detailed, call_json, call_short
 from knowledge_wiki.mcp.client import mcp_query
 
 WIKI_ROOT = settings.wiki_root
@@ -122,52 +121,28 @@ def handle_url_ingest(user_id: str, url: str, send_md, send_tpl):
 
 
 def handle_query_msg(user_id: str, question: str, send_md, send_tpl):
-    """MCP 检索 → qwen2.5:3b → 结构化 template_cards."""
+    """新检索流水线 → qwen2.5:3b markdown → 回复.
+
+    v2: 使用 call_detailed（markdown 格式）替代 call_json（JSON cards），
+    新检索流水线产出的结构化上下文对 3B 模型更友好。
+    """
+    # 获取新检索流水线结果
     context = mcp_query(question)
     if not context:
         send_md(user_id, "知识库查询失败，请重试。")
         return
 
+    # 去除可能残留的 YAML frontmatter
     context = strip_frontmatter(context)
 
-    card_data = call_json(question, context)
-    if not card_data or "cards" not in card_data:
-        # Fallback: 关键字搜索
-        results = keyword_search(question)
-        if not results:
-            send_md(user_id, f"知识库中暂无「{question}」相关内容。")
-            return
-        score, title, filepath = results[0]
-        body = filepath.read_text()
-        body_text = strip_frontmatter(body)
-        send_tpl(user_id,
-            title=title,
-            summary=_extract_first_meaningful_text(body_text),
-            details=_extract_kv_from_markdown(body_text) or _extract_section_kv(body_text),
-            source_desc=title)
-        return
+    # 用 qwen2.5:3b 生成详细 markdown 回答（失败时用检索原文）
+    answer = call_detailed(question, context)
+    if not answer:
+        # 最终 fallback：直接发送检索结果前 3000 字
+        answer = context[:3000]
 
-    cards = card_data["cards"]
-    top_page = get_top_page_titles(question)
-    for i, card in enumerate(cards[:8]):
-        if i > 0:
-            time.sleep(0.8)
-        details = _normalize_details(card.get("details", []))
-        summary = card.get("summary", "")
-        if not summary:
-            summary = call_short(f"{card.get('title', question)} 的核心信息",
-                                 json.dumps(details, ensure_ascii=False))
-        send_tpl(user_id,
-            title=card.get("title", question),
-            summary=summary or "",
-            details=details,
-            source_desc=f"{top_page} ({i + 1}/{len(cards)})")
-
-    overall = card_data.get("summary", "")
-    if overall and len(overall) > 100:
-        clean = _clean_markdown(overall)
-        if len(clean) > 50:
-            send_md(user_id, clean)
+    # 企业微信 markdown 消息字数上限约 4096，但实际编码后可能超，取 3000 保守
+    send_md(user_id, answer[:3000])
 
 
 def handle_inbox_text(user_id: str, text: str, send_md):

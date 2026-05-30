@@ -25,7 +25,8 @@ def create_server() -> FastMCP:
     from knowledge_wiki.mcp.tools.ingest import ingest_tool
 
     mcp.tool()(search_tool)
-    mcp.tool()(query_tool)
+    mcp.tool(name="query")(query_tool)  # 注册为 "query"（兼容旧客户端）
+    mcp.tool(name="query_tool")(query_tool)  # 别名
     mcp.tool()(lint_tool)
     mcp.tool()(ingest_tool)
 

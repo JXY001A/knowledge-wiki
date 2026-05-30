@@ -56,8 +56,8 @@ def mcp_query(question: str) -> str | None:
     """通过 MCP 查询 wiki，search 回退 + 全文读取."""
     import re
 
-    # Try query (title+tag match → full content)
-    result = call_tool("query", {"question": question})
+    # Try query_tool（新检索流水线：catalog → BM25 → layered）
+    result = call_tool("query_tool", {"question": question})
     if result and "未在 wiki 中找到" not in result:
         return result
 

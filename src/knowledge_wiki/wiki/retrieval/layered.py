@@ -86,13 +86,13 @@ def assemble_layered(
         return f"未在 wiki 中找到与「{query}」相关的页面。"
 
     # ---- Layer 1: 编译真相 ----
-    layer1 = _build_layer1(query, top_n[0], wiki_dir, cfg)
+    layer1 = _build_layer1(query, top_n[0], cfg)
 
     # ---- Layer 2: 交叉引用 ----
     layer2 = _build_layer2(top_n[0], wiki_dir, cfg)
 
     # ---- Layer 3: 证据补充 ----
-    layer3 = _build_layer3(query, top_n[1:], wiki_dir, cfg)
+    layer3 = _build_layer3(query, top_n[1:], cfg)
 
     # 组装最终 markdown
     parts = [
@@ -114,20 +114,18 @@ def assemble_layered(
 def _build_layer1(
     query: str,
     top1: BM25Result,
-    wiki_dir: Path,
     cfg,
 ) -> str:
     """构建 Layer 1：Top-1 文档的 frontmatter + 正文前 N 字。
 
     Args:
         top1: BM25 排名第一的结果
-        wiki_dir: wiki 目录
         cfg: 检索配置
 
     Returns:
         Layer 1 的 markdown 文本
     """
-    filepath = wiki_dir / top1.path
+    filepath = settings.wiki_root / top1.path
     if not filepath.exists():
         return f"**[[{top1.title}]]** | 文件未找到\n"
 
@@ -226,14 +224,12 @@ def _build_layer2(
 def _build_layer3(
     query: str,
     rest: list[BM25Result],
-    wiki_dir: Path,
     cfg,
 ) -> str:
     """构建 Layer 3：Top-2..N 全文 + 操作日志匹配条目。
 
     Args:
         rest: Top-2 之后的 BM25 结果
-        wiki_dir: wiki 目录
         cfg: 检索配置
 
     Returns:

@@ -101,7 +101,8 @@ def build_bm25_index(wiki_dir: Path | None = None) -> BM25Index:
     body_texts: list[str] = []
     meta_list: list[DocMeta] = []
 
-    for idx, md_path in enumerate(sorted(wiki_dir.rglob("*.md"))):
+    doc_idx = 0  # 独立计数器，不受排除文件影响
+    for md_path in sorted(wiki_dir.rglob("*.md")):
         # 排除特殊页
         if md_path.stem.lower() in exclude_stems or md_path.name.startswith("hot"):
             continue
@@ -139,7 +140,7 @@ def build_bm25_index(wiki_dir: Path | None = None) -> BM25Index:
 
         # 记录元数据
         meta = DocMeta(
-            doc_id=idx,
+            doc_id=doc_idx,
             path=str(md_path.relative_to(settings.wiki_root)),
             title=page_title,
             type=page_type,
@@ -149,6 +150,7 @@ def build_bm25_index(wiki_dir: Path | None = None) -> BM25Index:
             sha256=content_hash,
         )
         meta_list.append(meta)
+        doc_idx += 1
 
     n = len(meta_list)
 

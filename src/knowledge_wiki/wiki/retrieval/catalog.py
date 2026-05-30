@@ -112,6 +112,10 @@ def catalog_filter(
     if k is None:
         k = retrieval_config.catalog_top_k
 
+    # 空查询直接返回空（交给 BM25 全量处理）
+    if not query_tokens:
+        return []
+
     cfg = retrieval_config
     all_titles = catalog_index["all_titles"]
     categories = catalog_index["categories"]

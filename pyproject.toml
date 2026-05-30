@@ -55,6 +55,14 @@ dependencies = [
 
     # 基于 Pydantic 的配置管理，从环境变量和 .env 文件加载运行时配置
     "pydantic-settings>=2.0",
+
+    # ------ retrieval v2 依赖 ------
+    # 中文分词（jieba lcut / cut_for_search）
+    "jieba>=0.42.1",
+    # BM25 Okapi 实现（多字段加权检索）
+    "rank-bm25>=0.2.2",
+    # zstd 压缩（索引序列化）
+    "zstandard>=0.22",
 ]
 
 

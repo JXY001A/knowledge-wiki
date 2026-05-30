@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
 
+    # Retrieval v2 — 新检索流水线开关（False 时回退旧实现）
+    use_new_retrieval: bool = True
+
     model_config = {"env_prefix": "", "extra": "ignore"}
 
 

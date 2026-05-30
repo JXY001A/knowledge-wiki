@@ -21,6 +21,9 @@ dist/
 # Environment
 .env
 
+# Retrieval cache (索引不入 git，每台机器自己重建)
+.cache/
+
 # Temporary
 *.tmp
 *.bak

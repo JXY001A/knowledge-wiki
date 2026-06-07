@@ -116,8 +116,9 @@ def _todo_stats() -> dict:
     recent = []
     for r in conn.execute("SELECT * FROM todos ORDER BY created_at DESC LIMIT 5").fetchall():
         t = Todo.from_row(r)
+        dl = (t.deadline or "")[:10] if t.deadline else ""
         recent.append({"title": t.title, "status": t.status, "priority": t.priority,
-                       "deadline": t.deadline, "created": t.created_at[:10]})
+                       "deadline": dl, "created": (t.created_at or "")[:10]})
 
     conn.close()
     return {"total": total, "pending": pending, "done": done, "cancelled": cancelled,
@@ -268,7 +269,7 @@ def _query_log() -> list:
             "icon": icons.get(r["event_type"], "•"),
             "summary": r["summary"][:80],
             "score": r["score"],
-            "created": r["created_at"][:16] if r["created_at"] else "",
+            "created": str(r["created_at"])[:16] if r["created_at"] else "",
         })
 
     return log

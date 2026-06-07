@@ -82,10 +82,19 @@ def _server_status() -> dict:
     try:
         r = subprocess.run(["free", "-h"], capture_output=True, text=True, timeout=5)
         for line in r.stdout.split("\n"):
-            if "Mem:" in line:
+            if "Mem:" in line or "内存" in line:
                 parts = line.split()
-                system["mem_used"] = parts[2]
-                system["mem_total"] = parts[1]
+                for i, p in enumerate(parts):
+                    if p in ("Mem:", "内存："):
+                        if len(parts) > i+2:
+                            system["mem_total"] = parts[i+1]
+                            system["mem_used"] = parts[i+2]
+                        break
+                if "mem_total" not in system:
+                    # Fallback: third column is used, second is total
+                    if len(parts) >= 3:
+                        system["mem_total"] = parts[1]
+                        system["mem_used"] = parts[2]
                 break
     except Exception:
         pass

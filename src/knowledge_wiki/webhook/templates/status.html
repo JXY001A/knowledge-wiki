@@ -5,134 +5,133 @@
 <title>服务器状态 — DevMechin</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#f8fafc;--surface:#fff;--border:#e2e8f0;--text:#1e293b;--sub:#64748b;--brand:#3b82f6;--green:#16a34a;--red:#ef4444;--yellow:#eab308}
+:root{--green:#16a34a;--red:#ef4444;--brand:#3b82f6}
 body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0b1121;color:#e2e8f0;min-height:100vh}
 .topbar{background:rgba(15,23,42,.9);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.06);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
-.topbar .brand{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;text-decoration:none;color:#e2e8f0}
-.topbar .brand:hover{color:var(--brand)}
-.topbar .right{display:flex;align-items:center;gap:16px;font-size:12px;color:#94a3b8}
+.topbar a{text-decoration:none;font-size:15px;font-weight:600;color:#e2e8f0;display:flex;align-items:center;gap:8px}
+.topbar a:hover{color:var(--brand)}
+.topbar .nav{display:flex;gap:16px;font-size:13px}
+.topbar .nav a{font-size:13px;font-weight:400;color:#94a3b8}
+.topbar .nav a:hover{color:#e2e8f0}
 .topbar .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
 @keyframes pulse{50%{opacity:.4}}
-.container{max-width:1000px;margin:0 auto;padding:24px}
-.hero{text-align:center;padding:40px 20px 20px}
-.hero h1{font-size:26px;font-weight:700;margin-bottom:4px}
-.hero .addr{color:#94a3b8;font-size:14px}
-.refresh-bar{display:flex;align-items:center;justify-content:center;gap:12px;padding:16px;font-size:13px;color:#94a3b8}
-.refresh-bar .countdown{color:var(--brand);font-family:monospace;font-weight:600;min-width:40px;text-align:center;font-size:16px}
-.refresh-bar button{background:rgba(59,130,246,.15);color:var(--brand);border:1px solid rgba(59,130,246,.3);padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer}
-.refresh-bar button:hover{background:rgba(59,130,246,.25)}
+.container{max-width:960px;margin:0 auto;padding:20px}
+.hero{text-align:center;padding:32px 20px 12px}
+.hero h1{font-size:24px;font-weight:700}
+.hero p{color:#94a3b8;font-size:13px;margin-top:4px}
+.refresh-bar{display:flex;align-items:center;justify-content:center;gap:12px;padding:12px;font-size:13px;color:#94a3b8}
+.refresh-bar .countdown{color:var(--brand);font-family:monospace;font-weight:700;font-size:16px;min-width:36px;text-align:center}
 .refresh-bar select{background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:4px 8px;border-radius:6px;font-size:12px}
-.service-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:24px}
-.service-card{background:rgba(15,23,42,.8);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:20px;display:flex;align-items:flex-start;gap:14px;transition:all .2s}
-.service-card:hover{border-color:rgba(255,255,255,.1)}
-.service-card .status-dot{width:14px;height:14px;border-radius:50%;margin-top:3px;flex-shrink:0}
-.service-card .status-dot.up{background:var(--green);box-shadow:0 0 12px rgba(22,163,74,.4)}
-.service-card .status-dot.down{background:var(--red);box-shadow:0 0 12px rgba(239,68,68,.4)}
+.refresh-bar button{background:rgba(59,130,246,.15);color:var(--brand);border:1px solid rgba(59,130,246,.25);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer;transition:all .15s}
+.refresh-bar button:hover{background:rgba(59,130,246,.3)}
+.loading{text-align:center;padding:40px;color:#94a3b8}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid #334155;border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.service-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px}
+.service-card{background:rgba(15,23,42,.8);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px;display:flex;align-items:flex-start;gap:12px}
+.service-card .dot{width:12px;height:12px;border-radius:50%;margin-top:4px;flex-shrink:0}
+.service-card .dot.up{background:var(--green);box-shadow:0 0 10px rgba(22,163,74,.4)}
+.service-card .dot.down{background:var(--red);box-shadow:0 0 10px rgba(239,68,68,.4)}
 .service-card .info{flex:1}
-.service-card .name{font-size:16px;font-weight:600;margin-bottom:4px}
+.service-card .name{font-size:15px;font-weight:600;margin-bottom:3px}
 .service-card .desc{font-size:12px;color:#94a3b8}
-.service-card .port{font-family:monospace;font-size:13px;color:var(--brand);margin-top:2px}
-.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px}
-.metric-card{background:rgba(15,23,42,.8);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:20px;text-align:center}
-.metric-card .value{font-size:32px;font-weight:700;margin:8px 0}
-.metric-card .label{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px}
-.metric-card .sub{font-size:11px;color:#64748b;margin-top:4px}
-.gpu-bar{height:6px;background:#334155;border-radius:3px;margin-top:8px;overflow:hidden}
-.gpu-bar .fill{height:100%;background:var(--brand);border-radius:3px;transition:width .5s}
-footer{text-align:center;padding:40px;color:#64748b;font-size:11px}
-footer a{color:var(--brand);text-decoration:none;margin:0 8px}
+.service-card .port{font-family:monospace;font-size:12px;color:var(--brand);margin-top:2px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.metric-card{background:rgba(15,23,42,.8);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px;text-align:center}
+.metric-card .label{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.metric-card .value{font-size:28px;font-weight:700}
+.metric-card .sub{font-size:11px;color:#64748b;margin-top:3px}
+.bar{height:6px;background:#334155;border-radius:3px;margin-top:8px;overflow:hidden}
+.bar .fill{height:100%;background:var(--brand);border-radius:3px;transition:width .6s}
+.error-msg{text-align:center;padding:20px;color:var(--red);font-size:13px}
 </style>
 </head>
 <body>
 <div class="topbar">
-  <a href="/" class="brand">🖥️ DevMechin</a>
-  <div class="right">
-    <span class="live-dot"></span> 实时监控
-    <a href="/" style="color:#94a3b8;text-decoration:none">首页</a>
-    <a href="/admin" style="color:#94a3b8;text-decoration:none">管理后台</a>
+  <a href="/"><span class="live-dot"></span> DevMechin</a>
+  <div class="nav">
+    <a href="/">首页</a>
+    <a href="/chat">对话</a>
+    <a href="/admin">管理后台</a>
+    <a href="/status" style="color:#e2e8f0">服务器</a>
   </div>
 </div>
 
 <div class="container">
 <div class="hero">
   <h1>DevMechin 服务器</h1>
-  <p class="addr">8.133.175.201 · Ubuntu 24.04 · i7-14700KF · RTX 4080 SUPER</p>
+  <p>8.133.175.201 · Ubuntu 24.04 · i7-14700KF · RTX 4080 SUPER</p>
 </div>
 
 <div class="refresh-bar">
   刷新间隔
-  <select id="interval" onchange="setInterval(this.value)">
+  <select id="intervalSelect" onchange="changeInterval(this.value)">
     <option value="5">5 秒</option>
     <option value="15" selected>15 秒</option>
     <option value="30">30 秒</option>
     <option value="60">60 秒</option>
   </select>
-  · 下次刷新 <span class="countdown" id="countdown">15</span>
-  <button onclick="load()">🔄 立即刷新</button>
+  · 下次刷新 <span class="countdown" id="countdown">15</span>s
+  <button onclick="refreshNow()">🔄 立即刷新</button>
 </div>
 
-<div class="service-grid" id="services"></div>
-
-<div class="metrics" id="metrics"></div>
-
-<footer>
-  <a href="/">首页</a> · <a href="/chat">对话</a> · <a href="/admin">管理后台</a><br>
-  DevMechin · RTX 4080 SUPER 16GB · 数据每 N 秒刷新
-</footer>
+<div id="content">
+  <div class="loading"><div class="spinner"></div><p style="margin-top:12px">加载中...</p></div>
+</div>
 </div>
 
 <script>
-let interval=15,timer=null,countdownVal=15;
+let refreshSec=15,countdown=15,timer=null;
 
-function setInterval(v){interval=parseInt(v);resetTimer()}
-function resetTimer(){clearInterval(timer);countdownVal=interval;updateCountdown();timer=setInterval(()=>{countdownVal--;updateCountdown();if(countdownVal<=0){load();countdownVal=interval}},1000)}
-function updateCountdown(){document.getElementById('countdown').textContent=countdownVal}
+function changeInterval(v){refreshSec=parseInt(v);countdown=refreshSec;updateCD();resetTimer()}
+function updateCD(){document.getElementById('countdown').textContent=countdown}
+function resetTimer(){clearInterval(timer);timer=setInterval(tick,1000)}
+function tick(){countdown--;updateCD();if(countdown<=0){load();countdown=refreshSec}}
 
 async function load(){
-  try{const r=await fetch('/admin/data');const d=await r.json();const s=d.server_status||{};renderServices(s);renderMetrics(s)}catch(e){}
+  try{
+    const r=await fetch('/admin/data');
+    if(!r.ok)throw new Error(r.status);
+    const d=await r.json();const s=d.server_status||{};
+    render(s);
+  }catch(e){
+    document.getElementById('content').innerHTML=`<div class="error-msg">⚠️ 数据加载失败: ${e.message}<br><button onclick="load()" style="margin-top:12px;background:rgba(59,130,246,.15);color:var(--brand);border:1px solid rgba(59,130,246,.25);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px">重试</button></div>`;
+  }
 }
 
-function renderServices(s){
-  const svc=s.services||{};
+function refreshNow(){countdown=0;load();countdown=refreshSec;updateCD()}
+
+function render(s){
+  const svc=s.services||{},gpu=s.gpu||{},sys=s.system||{};
   const items=[
-    {name:'wiki-mcp',desc:'MCP Server — AI 工具调用入口',port:':9300'},
-    {name:'wecom-webhook',desc:'企业微信 Bot + Web 服务',port:':9400'},
-    {name:'wiki-scheduler',desc:'定时调度 — 提醒/早报/备份',port:'内部'},
-    {name:'ollama',desc:'本地 LLM — qwen2.5:3b + qwen3-vl:8b',port:':11434'},
-    {name:'frpc',desc:'FRP 隧道 — 外网访问',port:':60022'},
+    {key:'wiki-mcp',name:'wiki-mcp',desc:'MCP Server — AI 工具调用入口',port:':9300'},
+    {key:'wecom-webhook',name:'wecom-webhook',desc:'企业微信 Bot + Web 服务',port:':9400'},
+    {key:'wiki-scheduler',name:'wiki-scheduler',desc:'定时调度 — 提醒/早报/备份',port:'内部'},
+    {key:'ollama',name:'Ollama',desc:'本地 LLM — qwen2.5:3b + qwen3-vl:8b',port:':11434'},
+    {key:'frpc',name:'FRP 隧道',desc:'内网穿透 — 外网访问入口',port:':60022'},
   ];
-  document.getElementById('services').innerHTML=items.map(i=>{
-    const up=svc[i.name]!==false;
-    return `<div class="service-card"><div class="status-dot ${up?'up':'down'}"></div><div class="info"><div class="name">${i.name}</div><div class="desc">${i.desc}</div><div class="port">${i.port} ${up?'● 运行中':'● 已停止'}</div></div></div>`
-  }).join('');
-}
 
-function renderMetrics(s){
-  const gpu=s.gpu||{},sys=s.system||{};
   const memUsed=parseFloat(sys.mem_used)||0,memTotal=parseFloat(sys.mem_total)||1;
+  const diskPct=parseInt(sys.disk_pct)||0;
   const gpuUtil=parseInt(gpu.util)||0;
-  document.getElementById('metrics').innerHTML=
-    `<div class="metric-card">
-      <div class="label">⏱ 运行时间</div>
-      <div class="value" style="font-size:22px">${sys.uptime||'?'}</div>
-    </div>`+
-    `<div class="metric-card">
-      <div class="label">💾 内存</div>
-      <div class="value">${sys.mem_used||'?'}<span style="font-size:14px;color:#94a3b8">/${sys.mem_total||'?'}</span></div>
-      <div class="gpu-bar"><div class="fill" style="width:${Math.round(memUsed/memTotal*100)}%"></div></div>
-    </div>`+
-    `<div class="metric-card">
-      <div class="label">📀 磁盘</div>
-      <div class="value">${sys.disk_pct||'?'}</div>
-      <div class="sub">${sys.disk_used||'?'}/${sys.disk_total||'?'}</div>
-      <div class="gpu-bar"><div class="fill" style="width:${parseInt(sys.disk_pct)||0}%"></div></div>
-    </div>`+
-    (gpu.name?`<div class="metric-card">
-      <div class="label">🎮 ${gpu.name?.split(' ').slice(-2).join(' ')||'GPU'}</div>
-      <div class="value">${gpuUtil}%</div>
-      <div class="sub">显存 ${gpu.mem_used||'?'}/${gpu.mem_total||'?'} | ${gpu.temp||'?'}°C</div>
-      <div class="gpu-bar"><div class="fill" style="width:${gpuUtil}%"></div></div>
-    </div>`:'');
+
+  let html='<div class="service-grid">';
+  items.forEach(i=>{
+    const up=svc[i.key]!==false;
+    html+=`<div class="service-card"><div class="dot ${up?'up':'down'}"></div><div class="info"><div class="name">${i.name}</div><div class="desc">${i.desc}</div><div class="port">${i.port} ${up?'● 运行中':'● 已停止'}</div></div></div>`;
+  });
+  html+='</div>';
+
+  html+='<div class="metrics">';
+  html+=`<div class="metric-card"><div class="label">⏱ 运行时间</div><div class="value" style="font-size:22px">${sys.uptime||'—'}</div></div>`;
+  html+=`<div class="metric-card"><div class="label">💾 内存</div><div class="value">${sys.mem_used||'—'}<span style="font-size:14px;color:#94a3b8"> / ${sys.mem_total||'—'}</span></div><div class="bar"><div class="fill" style="width:${Math.round(memUsed/Math.max(memTotal,1)*100)}%"></div></div></div>`;
+  html+=`<div class="metric-card"><div class="label">📀 磁盘</div><div class="value">${sys.disk_pct||'—'}</div><div class="sub">${sys.disk_used||'—'} / ${sys.disk_total||'—'}</div><div class="bar"><div class="fill" style="width:${diskPct}%"></div></div></div>`;
+  if(gpu.name){
+    html+=`<div class="metric-card"><div class="label">🎮 ${gpu.name.split(' ').slice(-2).join(' ')||'GPU'}</div><div class="value">${gpuUtil}%</div><div class="sub">显存 ${gpu.mem_used||'—'} / ${gpu.mem_total||'—'} | ${gpu.temp||'—'}°C</div><div class="bar"><div class="fill" style="width:${gpuUtil}%"></div></div></div>`;
+  }
+  html+='</div>';
+
+  document.getElementById('content').innerHTML=html;
 }
 
 load();resetTimer();

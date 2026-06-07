@@ -125,6 +125,113 @@ def create_server() -> FastMCP:
     mcp.tool()(profile_update)
     mcp.tool()(concept_coverage)
 
+    # 注册 Track B 助理工具 — Todo
+    from knowledge_wiki.assistant.db import get_db as assist_db, init_schema as init_assist
+    from knowledge_wiki.assistant.models import Todo, Note
+
+    async def todo_list(status: str = "pending", limit: int = 20) -> str:
+        """列出待办事项（按优先级排序）."""
+        conn = assist_db()
+        init_assist(conn)
+        rows = conn.execute(
+            "SELECT * FROM todos WHERE status = ? ORDER BY "
+            "CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, "
+            "created_at DESC LIMIT ?",
+            [status, limit],
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return "暂无待办。"
+        todos = [Todo.from_row(r) for r in rows]
+        lines = [f"## 待办列表（{len(todos)} 项）\n"]
+        icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+        for i, t in enumerate(todos, 1):
+            icon = icons.get(t.priority, "⚪")
+            line = f"{i}. {icon} {t.title}"
+            if t.deadline:
+                line += f" | {t.deadline[:10]}"
+            lines.append(line)
+        return "\n".join(lines)
+
+    async def todo_create(title: str, priority: str = "medium", deadline: str = "", tags: str = "") -> str:
+        """创建待办事项."""
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+        conn = assist_db()
+        init_assist(conn)
+        t = Todo(title=title[:80], priority=priority, deadline=deadline or None, tags=tag_list)
+        d = t.to_dict()
+        conn.execute(
+            f"INSERT INTO todos ({', '.join(d.keys())}) VALUES ({', '.join('?' for _ in d)})",
+            list(d.values()),
+        )
+        conn.commit()
+        conn.close()
+        return f"✅ 已创建待办：{title}"
+
+    async def todo_complete(todo_id: str) -> str:
+        """完成待办."""
+        from datetime import datetime
+        conn = assist_db()
+        init_assist(conn)
+        row = conn.execute("SELECT title FROM todos WHERE id=?", [todo_id]).fetchone()
+        if not row:
+            conn.close()
+            return f"待办 {todo_id} 不存在。"
+        conn.execute(
+            "UPDATE todos SET status='done', completed_at=?, updated_at=? WHERE id=?",
+            [datetime.now().isoformat(), datetime.now().isoformat(), todo_id],
+        )
+        conn.commit()
+        conn.close()
+        return f"🎉 已完成：{row['title']}"
+
+    # 注册 Track B 助理工具 — Note
+    async def note_create(content: str, tags: str = "") -> str:
+        """保存快速笔记."""
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+        conn = assist_db()
+        init_assist(conn)
+        n = Note(content=content[:500], tags=tag_list)
+        d = n.to_dict()
+        conn.execute(
+            f"INSERT INTO notes ({', '.join(d.keys())}) VALUES ({', '.join('?' for _ in d)})",
+            list(d.values()),
+        )
+        conn.commit()
+        conn.close()
+        preview = content[:60] + ("..." if len(content) > 60 else "")
+        return f"📝 已保存笔记：{preview}"
+
+    async def note_search(query: str, limit: int = 10) -> str:
+        """搜索笔记（FTS5 全文搜索）."""
+        conn = assist_db()
+        init_assist(conn)
+        try:
+            rows = conn.execute(
+                "SELECT n.* FROM notes n JOIN notes_fts nf ON n.rowid = nf.rowid "
+                "WHERE notes_fts MATCH ? ORDER BY rank LIMIT ?",
+                [query, limit],
+            ).fetchall()
+        except Exception:
+            rows = conn.execute(
+                "SELECT * FROM notes WHERE content LIKE ? LIMIT ?",
+                [f"%{query}%", limit],
+            ).fetchall()
+        conn.close()
+        if not rows:
+            return f"未找到「{query}」相关笔记。"
+        notes = [Note.from_row(r) for r in rows]
+        lines = [f"## 笔记搜索：{query}（{len(notes)} 条）\n"]
+        for n in notes:
+            lines.append(f"- {n.content[:100]}")
+        return "\n".join(lines)
+
+    mcp.tool()(todo_list)
+    mcp.tool()(todo_create)
+    mcp.tool()(todo_complete)
+    mcp.tool()(note_create)
+    mcp.tool()(note_search)
+
     # 注册 Phase 2 技能工具
     from knowledge_wiki.skill.registry import get_skills_summary
     from knowledge_wiki.skill.planner import execute_skill

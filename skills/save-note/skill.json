@@ -5,6 +5,6 @@
   "tier": 1,
   "model": "local",
   "tools": [],
-  "triggers": ["保存", "记录", "笔记", "save", "note"],
+  "triggers": ["保存", "记录", "save", "note", "存一下"],
   "dependencies": []
 }

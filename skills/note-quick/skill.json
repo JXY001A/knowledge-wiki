@@ -1,0 +1,10 @@
+{
+  "name": "note-quick",
+  "version": "1.0",
+  "description": "保存快速笔记到知识库，自动打标签",
+  "tier": 1,
+  "model": "local",
+  "tools": ["note_create", "note_search"],
+  "triggers": ["笔记", "记一下", "备忘", "备注", "闪念", "便签"],
+  "dependencies": []
+}

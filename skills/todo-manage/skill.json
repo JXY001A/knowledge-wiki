@@ -1,0 +1,10 @@
+{
+  "name": "todo-manage",
+  "version": "1.0",
+  "description": "管理待办事项：创建、查看、完成、删除",
+  "tier": 1,
+  "model": "local",
+  "tools": ["todo_list", "todo_create", "todo_complete"],
+  "triggers": ["待办", "todo", "任务", "完成", "取消任务", "做", "要做"],
+  "dependencies": []
+}

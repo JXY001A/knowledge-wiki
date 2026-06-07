@@ -31,8 +31,8 @@ def test_match_lint_intent():
 
 
 def test_match_save_intent():
-    """保存类意图匹配 save-note."""
-    queries = ["保存一段笔记", "记录今天的工作"]
+    """保存类意图匹配 save-note（不含"笔记"——已迁移到 note-quick）."""
+    queries = ["保存一段文字", "记录今天的工作", "存一下这个"]
     for q in queries:
         skill = match_skill(q)
         assert skill is not None, f"Failed to match: {q}"

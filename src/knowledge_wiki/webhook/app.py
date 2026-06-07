@@ -202,6 +202,14 @@ def create_app() -> Flask:
         conn.close()
         return jsonify({"ok": True})
 
+    # 服务器状态页
+    @app.route("/status", methods=["GET"])
+    def server_status():
+        """DevMechin 服务器运行状态."""
+        from pathlib import Path
+        html_path = Path(__file__).parent / "templates" / "status.html"
+        return html_path.read_text(encoding="utf-8")
+
     # 管理后台
     @app.route("/admin", methods=["GET"])
     def admin_dashboard():

@@ -9,7 +9,7 @@ sources: []
 confidence: high
 ---
 
-> DevMechin 外接 USB 音响的设备识别与命令行控制方法。Jieli Technology USB Composite Device，通过 PipeWire + ALSA 驱动。
+> DevMechin 外接 USB 音响的设备识别与命令行控制方法。Jieli Technology USB Composite Device，通过 ALSA 直接驱动（绕过 PipeWire）。
 
 ## 设备信息
 
@@ -41,37 +41,52 @@ groups | grep audio
 
 ## 播放命令
 
+> 所有命令需要 `sg audio -c` 前缀（如果 SSH 会话尚未加载 audio 组），或重新登录后直接用。
+
 ### 测试音
 
 ```bash
 # 440Hz 正弦波，1 秒
-speaker-test -D plughw:2,0 -t sine -f 440 -l 1
+sg audio -c 'speaker-test -D plughw:2,0 -t sine -f 440 -l 1'
+
+# 交替高低音（6 声）
+sg audio -c 'for f in 440 880 440 880 440 880; do
+    speaker-test -D plughw:2,0 -t sine -f $f -l 1 2>/dev/null; sleep 0.3; done'
 ```
 
-### 音阶
+### 播放音频文件
 
 ```bash
-# C 大调上行：C E G C'
-for f in 523 659 784 1047; do
-    speaker-test -D plughw:2,0 -t sine -f $f -l 1 2>/dev/null
-    sleep 0.15
-done
+# WAV（推荐 — 最稳定）
+sg audio -c 'aplay -q -D plughw:2,0 file.wav'
+
+# MP3（先转为 WAV 再播放）
+mpg123 -q -w /tmp/output.wav input.mp3
+sg audio -c 'aplay -q -D plughw:2,0 /tmp/output.wav'
 ```
 
-### 播放音频文件（需安装解码器）
+### TTS 语音合成
 
 ```bash
-# WAV 原文件
-aplay -D plughw:2,0 file.wav
+# 安装 Microsoft Edge TTS
+pip3 install edge-tts --break-system-packages
 
-# MP3 / FLAC（PipeWire）
-pw-play file.mp3
+# 生成中文语音并播放
+python3 -c "
+import asyncio, edge_tts
+async def main():
+    tts = edge_tts.Communicate('你好，我是金显昱的小音响', 'zh-CN-XiaoxiaoNeural')
+    await tts.save('/tmp/speech.mp3')
+asyncio.run(main())
+"
+mpg123 -q -w /tmp/speech.wav /tmp/speech.mp3
+sg audio -c 'aplay -q -D plughw:2,0 /tmp/speech.wav'
 ```
 
 ### 白噪声 / 粉红噪声
 
 ```bash
-speaker-test -D plughw:2,0 -t pink -l 3
+sg audio -c 'speaker-test -D plughw:2,0 -t pink -l 3'
 ```
 
 ## 排障
@@ -79,9 +94,10 @@ speaker-test -D plughw:2,0 -t pink -l 3
 | 现象 | 原因 | 解决 |
 |------|------|------|
 | `找不到音效卡` | 用户不在 `audio` 组 | `usermod -a -G audio` + 重登 |
-| `Cannot get card index` | PipeWire 独占设备，需用 `plughw` | 使用 `plughw:2,0` 而非 `hw:2,0` |
-| 设备突然不可用 | USB 断开重连后编号可能变化 | 检查 `/proc/asound/cards` 确认 card 编号 |
-| `没有那个设备` | ALSA 无法直接访问，PipeWire 占用 | 改用 `pw-play` 或等待 PipeWire 释放 |
+| PipeWire 抢占导致没声音 | WirePlumber 自动接管 USB 设备，`pw-play` 走 null sink | 绕过 PipeWire，直接用 ALSA `plughw:2,0` |
+| `Cannot get card index` | PipeWire 独占设备 | 使用 `plughw:2,0` 而非 `hw:2,0` |
+| 设备突然不可用 | USB 断开重连后编号可能变化 | `cat /proc/asound/cards` 确认 card 编号 |
+| `mpg123` 输出无声音 | MP3 采样率与设备不匹配 | 先转为 48kHz WAV 再 `aplay` |
 
 ## 相关
 

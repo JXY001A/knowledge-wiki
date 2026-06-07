@@ -3,6 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 from knowledge_wiki.config import settings
+from knowledge_wiki.wiki.atomic import atomic_write
 
 WIKI_ROOT = settings.wiki_root
 RAW_INBOX = WIKI_ROOT / "raw" / "收件箱"
@@ -27,7 +28,7 @@ def save_to_inbox(content: str, msg_type: str = "text") -> Path:
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     filepath = RAW_INBOX / f"wecom-{msg_type}-{ts}.md"
     text = f"# 企业微信消息\n\n- 时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n- 类型: {msg_type}\n\n{content}"
-    filepath.write_text(text)
+    atomic_write(filepath, text)
     return filepath
 
 

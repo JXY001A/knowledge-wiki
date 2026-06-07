@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from knowledge_wiki.config import settings
+from knowledge_wiki.wiki.atomic import atomic_update, atomic_write
 from knowledge_wiki.wiki.builder import extract_concept_names
 
 
@@ -46,15 +47,16 @@ def append_query_log(question: str, pages: list[str], result: str):
 
 
 def _insert_entry(log_path, entry: str):
-    """将条目插入操作日志顶部（在提示文本之后）."""
-    content = log_path.read_text()
-    marker = "> 每次 ingest / query / lint"
-    pos = content.find(marker)
-    if pos != -1:
-        insert_at = content.find("\n", pos) + 1
-        if content[insert_at] == "\n":
-            insert_at += 1
-    else:
-        insert_at = len(content)
-    updated = content[:insert_at] + entry + "\n" + content[insert_at:]
-    log_path.write_text(updated)
+    """将条目插入操作日志顶部（在提示文本之后），原子写入."""
+    def _transform(content: str) -> str:
+        marker = "> 每次 ingest / query / lint"
+        pos = content.find(marker)
+        if pos != -1:
+            insert_at = content.find("\n", pos) + 1
+            if insert_at < len(content) and content[insert_at] == "\n":
+                insert_at += 1
+        else:
+            insert_at = len(content)
+        return content[:insert_at] + entry + "\n" + content[insert_at:]
+
+    atomic_update(log_path, _transform)

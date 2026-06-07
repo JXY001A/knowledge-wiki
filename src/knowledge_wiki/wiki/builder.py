@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from knowledge_wiki.config import settings
+from knowledge_wiki.wiki.atomic import atomic_write
 
 
 def build_source_page(data: dict, url: str) -> Path:
@@ -70,7 +71,7 @@ media: article
     dest.mkdir(parents=True, exist_ok=True)
     safe_name = title.replace(":", "：").replace("/", "-")
     filepath = dest / f"{safe_name}.md"
-    filepath.write_text(page)
+    atomic_write(filepath, page)
     return filepath
 
 
@@ -118,7 +119,7 @@ confidence: medium
 
 - [[Wiki 目录]]
 """
-    filepath.write_text(page)
+    atomic_write(filepath, page)
     return filepath
 
 

@@ -192,14 +192,15 @@ def process_message(user_id: str, text: str, send_md, send_tpl):
         elif is_url(stripped):
             skill = match_skill(stripped)
         else:
-            skill = match_skill(stripped)
+            # 优先走 LLM 分类（语义理解），关键词做快速兜底
+            from knowledge_wiki.skill.engine import classify_intent_llm
+            skill_name = classify_intent_llm(stripped)
+            _debug(f"LLM classify: {skill_name}")
+            if skill_name:
+                from knowledge_wiki.skill.registry import find_skill
+                skill = find_skill(skill_name)
             if not skill:
-                from knowledge_wiki.skill.engine import classify_intent_llm
-                skill_name = classify_intent_llm(stripped)
-                _debug(f"LLM classify: {skill_name}")
-                if skill_name:
-                    from knowledge_wiki.skill.registry import find_skill
-                    skill = find_skill(skill_name)
+                skill = match_skill(stripped)  # 关键词兜底
 
         _debug(f"skill={skill.name if skill else None}")
 

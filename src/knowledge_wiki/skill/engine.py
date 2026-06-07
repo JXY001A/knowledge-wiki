@@ -120,24 +120,26 @@ def classify_intent_llm(text: str) -> str | None:
         for s in sorted(skills, key=lambda s: s.tier)
     )
 
-    prompt = f"""你是意图分类器。根据用户输入，从以下技能中选择最匹配的一个。
+    prompt = f"""你是意图分类器。仔细分析用户输入的真实意图，选择最匹配的技能。
 
 可用技能：
 {skill_list}
 
-规则：
-- 用户说"待办/todo/任务/要做/添加" → todo-manage
-- 用户说"提醒/闹钟/几点/叫我/记得" → remind-set
-- 用户说"笔记/备忘/记一下" → note-quick
-- 用户说"书签/收藏/稍后读" → bookmark-save
-- 用户说"今天/明天/日程/安排" → schedule-view
-- 用户说"日报/早报/晚报/简报/总结" → daily-brief
-- 用户说"打卡/习惯" → habit-track
-- 用户问问题（以?开头或包含"是什么/怎么/为什么"） → query-knowledge
-- URL链接 → ingest-article
-- 其他无明确意图的文本 → save-note
+规则（优先级从高到低）：
+1. 用户要"加到待办/添加到待办/创建待办/记一个待办" → todo-manage（即使文本中有"提醒"二字）
+2. 用户要设置时间提醒（不说"待办"） → remind-set
+3. 用户说"笔记/备忘/记一下" → note-quick
+4. 用户说"书签/收藏/稍后读" → bookmark-save
+5. 用户问"今天/明天要做什么/日程/安排" → schedule-view
+6. 用户说"日报/早报/晚报/简报/总结" → daily-brief
+7. 用户说"打卡/习惯" → habit-track
+8. 用户问问题（以?开头或问"是什么/怎么/为什么"） → query-knowledge
+9. URL链接 → ingest-article
+10. 无明确意图的文本 → save-note
 
-只输出技能名称，不要解释。"""
+重要：用户说"加入到待办"一定选 todo-manage，不管文本里有没有"提醒"。
+
+只输出技能名称。"""
 
     try:
         body = json.dumps({

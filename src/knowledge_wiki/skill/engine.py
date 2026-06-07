@@ -153,19 +153,19 @@ def classify_intent_llm(text: str) -> str | None:
 可用技能：
 {skill_list}
 
-规则（优先级从高到低）：
-1. 用户要"加到待办/添加到待办/创建待办/记一个待办" → todo-manage（即使文本中有"提醒"二字）
-2. 用户要设置时间提醒（不说"待办"） → remind-set
-3. 用户说"笔记/备忘/记一下" → note-quick
-4. 用户说"书签/收藏/稍后读" → bookmark-save
-5. 用户问"今天/明天要做什么/日程/安排" → schedule-view
-6. 用户说"日报/早报/晚报/简报/总结" → daily-brief
-7. 用户说"打卡/习惯" → habit-track
-8. 用户问问题（以?开头或问"是什么/怎么/为什么"） → query-knowledge
-9. URL链接 → ingest-article
-10. 无明确意图的文本 → save-note
+规则：
+1. 用户说"待办/加到待办/加入到待办/todo" → todo-manage
+2. 用户描述一项任务/活动（如"提醒我上班""提醒我喝水""提醒我开会"）→ todo-manage
+3. 纯时间提醒（如"3点叫我""设个闹钟""到时间提醒我"）→ remind-set
+4. 用户说"笔记/备忘/记一下" → note-quick
+5. 用户说"书签/收藏/稍后读" → bookmark-save
+6. 用户问"今天/明天要做什么" → schedule-view
+7. 用户说"日报/早报/晚报" → daily-brief
+8. 用户说"打卡/习惯" → habit-track
+9. 用户问问题 → query-knowledge
+10. URL链接 → ingest-article
 
-重要：用户说"加入到待办"一定选 todo-manage，不管文本里有没有"提醒"。
+关键区别：todo-manage管任务（提醒我上班/喝水/开会），remind-set管时间通知（3点叫我/设闹钟）。
 
 只输出技能名称。"""
 

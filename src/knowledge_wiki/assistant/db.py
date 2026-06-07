@@ -142,8 +142,13 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 """
 
+SCHEMA_V2 = """
+ALTER TABLE reminders ADD COLUMN user_id TEXT DEFAULT '';
+"""
+
 MIGRATIONS = [
     (1, SCHEMA_V1, "初始 schema：todos/reminders/notes/bookmarks/habits/habit_logs/push_queue"),
+    (2, SCHEMA_V2, "reminders 表添加 user_id 列（主动推送需要）"),
 ]
 
 

@@ -43,7 +43,7 @@ def execute(context: dict) -> str:
     conn = get_db()
     init_schema(conn)
 
-    r = Reminder(content=content[:200], trigger_at=trigger_at)
+    r = Reminder(content=content[:200], trigger_at=trigger_at, user_id=user_id)
     d = r.to_dict()
     cols = ", ".join(d.keys())
     ph = ", ".join("?" for _ in d)
@@ -54,7 +54,7 @@ def execute(context: dict) -> str:
     # 注册到调度器
     try:
         from knowledge_wiki.assistant.scheduler import add_reminder_job
-        add_reminder_job(r.id, content, trigger_at)
+        add_reminder_job(r.id, content, trigger_at, user_id=user_id)
     except Exception:
         pass  # 调度器未启动时静默跳过
 

@@ -1,0 +1,14 @@
+[Unit]
+Description=Wiki Scheduler — 定时任务调度器（早报/提醒/备份）
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jxy001a1/code/knowledge-wiki
+EnvironmentFile=/home/jxy001a1/code/knowledge-wiki/.env
+ExecStart=/home/jxy001a1/code/knowledge-wiki/.venv/bin/python3 -m knowledge_wiki scheduler
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

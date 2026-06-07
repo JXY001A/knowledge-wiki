@@ -121,13 +121,14 @@ def stop_scheduler() -> None:
         _scheduler = None
 
 
-def add_reminder_job(reminder_id: str, content: str, trigger_at: str) -> None:
+def add_reminder_job(reminder_id: str, content: str, trigger_at: str, user_id: str = "") -> None:
     """动态添加提醒 Job.
 
     Args:
         reminder_id: 提醒记录 ID
         content: 提醒内容
         trigger_at: 触发时间 ISO8601
+        user_id: 企微 UserID（用于主动推送）
     """
     scheduler = get_scheduler()
     scheduler.add_job(
@@ -135,7 +136,7 @@ def add_reminder_job(reminder_id: str, content: str, trigger_at: str) -> None:
         DateTrigger(run_date=trigger_at, timezone="Asia/Shanghai"),
         id=f"remind:{reminder_id}",
         name=content[:60],
-        kwargs={"reminder_id": reminder_id, "content": content},
+        kwargs={"reminder_id": reminder_id, "content": content, "user_id": user_id},
         replace_existing=True,
     )
     _save_jobs(scheduler)
@@ -153,13 +154,61 @@ def remove_reminder_job(reminder_id: str) -> None:
 # ---- 系统 Job 实现（占位，后续 Phase 实现）----
 
 def _job_morning_brief():
-    """早报推送."""
-    _log.info("[scheduler] 早报时间")
+    """早报推送（通过企微主动推送）."""
+    _push_to_user("system", "☀️ 早上好！新的一天开始了。\n\n发送「早报」查看今日日程。")
 
 
 def _job_evening_brief():
-    """晚报推送."""
-    _log.info("[scheduler] 晚报时间")
+    """晚报推送（通过企微主动推送）."""
+    _push_to_user("system", "🌙 晚上好！发送「晚报」查看今日回顾。")
+
+
+def _push_to_user(user_id: str, content: str) -> bool:
+    """通过企微 API 主动推送消息给用户.
+
+    Args:
+        user_id: 企微 UserID（'system' 表示推送给最近活跃用户）
+        content: markdown 消息内容
+
+    Returns:
+        是否推送成功
+    """
+    try:
+        from knowledge_wiki.webhook.wechat.api import send_markdown
+
+        # 如果 user_id 为 'system' 或空，尝试从最近提醒获知真实用户
+        actual_user = user_id
+        if not actual_user or actual_user == "system":
+            actual_user = _get_last_active_user()
+
+        if not actual_user or actual_user == "system":
+            _log.info("[scheduler] 无活跃用户，跳过推送")
+            return False
+
+        ok = send_markdown(actual_user, content)
+        if ok:
+            _log.info("[scheduler] 推送成功: %s → %s", actual_user, content[:50])
+        else:
+            _log.warning("[scheduler] 推送失败: %s", actual_user)
+        return ok
+    except Exception as e:
+        _log.warning("[scheduler] 推送异常: %s", e)
+        return False
+
+
+def _get_last_active_user() -> str:
+    """从 reminders 表获取最近设置提醒的 user_id."""
+    try:
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        conn = get_db()
+        init_schema(conn)
+        row = conn.execute(
+            "SELECT user_id FROM reminders WHERE user_id != '' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        return row["user_id"] if row else ""
+    except Exception:
+        return ""
 
 
 def _job_db_backup():
@@ -213,9 +262,29 @@ def _job_deadline_scan():
         _log.warning("[scheduler] 待办扫描失败: %s", e)
 
 
-def _job_fire_reminder(reminder_id: str, content: str):
-    """触发提醒（后续 Phase 接入企微推送）."""
-    _log.info("[scheduler] 提醒触发: %s - %s", reminder_id, content)
+def _job_fire_reminder(reminder_id: str, content: str, user_id: str = ""):
+    """触发提醒并推送企微消息."""
+    _log.info("[scheduler] 提醒触发: %s - %s (user=%s)", reminder_id, content, user_id)
+
+    # 推送企微消息
+    msg = f"⏰ **提醒**\n\n{content}"
+    ok = _push_to_user(user_id, msg)
+
+    # 标记提醒已触发
+    if ok or not user_id:
+        try:
+            from datetime import datetime
+            from knowledge_wiki.assistant.db import get_db, init_schema
+            conn = get_db()
+            init_schema(conn)
+            conn.execute(
+                "UPDATE reminders SET status='fired', fired_at=? WHERE id=?",
+                [datetime.now().isoformat(), reminder_id],
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
 
 
 # ---- 持久化 ----

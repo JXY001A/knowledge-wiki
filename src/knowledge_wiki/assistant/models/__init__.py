@@ -69,6 +69,7 @@ class Reminder:
     repeat_rule: str | None = None   # cron 表达式
     status: str = "active"            # active|fired|cancelled
     fired_at: str | None = None
+    user_id: str = ""                 # 企微 UserID（用于主动推送）
     created_at: str = field(default_factory=now_iso)
 
     @classmethod

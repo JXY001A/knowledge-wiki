@@ -107,7 +107,7 @@ function renderOverview(){
   const done=ov.todos_total-ov.todos_pending;
   document.getElementById('overview').innerHTML=
     `<div class="stat" onclick="switchTab('wiki')" title="点击查看知识库详情"><div class="value">${ov.wiki_pages}</div><div class="label">Wiki 页面</div><div class="sub">${ov.concepts} 个概念页</div></div>`+
-    `<div class="stat" onclick="document.getElementById('evalChart').scrollIntoView({behavior:'smooth'})" title="点击查看评估趋势"><div class="value">⭐ ${ov.eval_avg}</div><div class="label">回答均分</div><div class="sub">共 ${ov.eval_count} 次评估</div></div>`+
+    `<div class="stat" onclick="switchTab('overview');setTimeout(()=>document.getElementById('evalChart').scrollIntoView({behavior:'smooth'}),100)" title="点击查看评估趋势"><div class="value">⭐ ${ov.eval_avg}</div><div class="label">回答均分</div><div class="sub">共 ${ov.eval_count} 次评估</div></div>`+
     `<div class="stat" onclick="switchTab('logs')" title="点击查看操作日志"><div class="value">${ov.memories}</div><div class="label">操作记忆</div><div class="sub">条记录</div></div>`+
     `<div class="stat" onclick="switchTab('skills')" title="点击查看待办详情"><div class="value">${done}/${ov.todos_total}</div><div class="label">待办完成</div><div class="sub">剩余 ${ov.todos_pending} 项</div></div>`;
 

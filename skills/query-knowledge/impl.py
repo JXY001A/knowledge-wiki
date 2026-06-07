@@ -30,6 +30,13 @@ def execute(context: dict) -> str:
     if not user_id:
         return f"## 问答结果\n\n{question}\n\n*独立执行：需要 user_id 才能发送卡片.*"
 
+    # 0. 注入工作记忆上下文（最近操作记录）
+    try:
+        from knowledge_wiki.memory.working import build_system_prompt_suffix
+        memory_context = build_system_prompt_suffix(user_id if user_id else None)
+    except Exception:
+        memory_context = ""
+
     # 1. 新检索流水线（catalog → BM25 → layered）——直接调用，不经过 MCP
     try:
         wiki_context = run_pipeline(question)
@@ -43,8 +50,11 @@ def execute(context: dict) -> str:
             send_md(user_id, "知识库查询失败，请重试。")
         return ""
 
-    # 2. qwen2.5:3b markdown 格式化（截断到 3000 字适配 4096 context window）
-    answer = call_detailed(question, wiki_context[:3000])
+    # 2. qwen2.5:3b markdown 格式化（注入记忆上下文）
+    full_context = wiki_context
+    if memory_context:
+        full_context = memory_context + "\n---\n" + wiki_context
+    answer = call_detailed(question, full_context[:3000])
     if not answer:
         answer = wiki_context[:2800]
 

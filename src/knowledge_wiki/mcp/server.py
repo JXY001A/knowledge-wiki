@@ -30,6 +30,72 @@ def create_server() -> FastMCP:
     mcp.tool()(lint_tool)
     mcp.tool()(ingest_tool)
 
+    # 注册 Phase 3 记忆工具
+    from knowledge_wiki.memory.reader import recent_events, search_memory, get_stats as memory_stats
+    from knowledge_wiki.memory.reader import recent_context
+
+    async def memory_recent(limit: int = 10, event_type: str = "all") -> str:
+        """查询最近 N 条记忆事件.
+
+        Args:
+            limit: 返回条数（默认 10）
+            event_type: 筛选类型：all/query/ingest/lint/system
+        """
+        et = event_type if event_type != "all" else None
+        events = recent_events(limit=limit, event_type=et)
+        if not events:
+            return "暂无记忆记录。"
+        lines = [f"## 最近记忆（{len(events)} 条）\n"]
+        for e in events:
+            icon = {"query": "🔍", "ingest": "📥", "lint": "🔬", "system": "⚙️", "synthesis": "📝"}.get(e.event_type, "•")
+            lines.append(f"- {icon} [{e._date_str()[:10]}] {e.summary}")
+        return "\n".join(lines)
+
+    async def memory_search(query: str, limit: int = 10) -> str:
+        """全文搜索记忆事件.
+
+        Args:
+            query: 搜索关键词
+            limit: 返回条数（默认 10）
+        """
+        results = search_memory(query, limit=limit)
+        if not results:
+            return f"未找到与「{query}」相关的记忆。"
+        lines = [f"## 记忆搜索结果：{query}（{len(results)} 条）\n"]
+        for e in results:
+            lines.append(f"### [{e._date_str()[:10]}] {e.summary}")
+            if e.details:
+                lines.append(f"{e.details[:300]}")
+            lines.append("---")
+        return "\n".join(lines)
+
+    async def memory_stats_tool() -> str:
+        """获取记忆系统统计摘要."""
+        stats = memory_stats()
+        if "error" in stats:
+            return f"记忆系统不可用：{stats['error']}"
+        lines = [
+            f"## 记忆统计",
+            f"总计：{stats['total']} 条",
+            f"按类型：{stats.get('by_type', {})}",
+            f"最后记录：{stats.get('last_event_summary', '无')}",
+        ]
+        return "\n".join(lines)
+
+    async def memory_context(limit: int = 5) -> str:
+        """生成最近记忆的上下文文本（供 Agent system prompt 注入）.
+
+        Args:
+            limit: 包含最近 N 条
+        """
+        ctx = recent_context(limit)
+        return ctx if ctx else "暂无记忆上下文。"
+
+    mcp.tool()(memory_recent)
+    mcp.tool()(memory_search)
+    mcp.tool()(memory_stats_tool)
+    mcp.tool()(memory_context)
+
     # 注册 Phase 2 技能工具
     from knowledge_wiki.skill.registry import get_skills_summary
     from knowledge_wiki.skill.planner import execute_skill

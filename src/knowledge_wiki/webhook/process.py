@@ -18,6 +18,8 @@ from knowledge_wiki.wiki.search import keyword_search
 from knowledge_wiki.llm.deepseek import call_ingest
 from knowledge_wiki.llm.ollama import call_detailed, call_json, call_short
 from knowledge_wiki.mcp.client import mcp_query
+from knowledge_wiki.memory import record_query as memory_record_query
+from knowledge_wiki.memory import record_ingest as memory_record_ingest
 
 WIKI_ROOT = settings.wiki_root
 
@@ -114,6 +116,16 @@ def handle_url_ingest(user_id: str, url: str, send_md, send_tpl):
     concept_names = extract_concept_names(llm_data.get("concepts", []))
     domain = llm_data.get("domain", "未知")
     summary = llm_data.get("summary", "")
+    # 记录结构化记忆
+    all_pages = [page_title] + [cp.stem for cp in new_concept_pages]
+    memory_record_ingest(
+        title=page_title,
+        domain=domain,
+        concepts=concept_names,
+        pages=all_pages,
+        user_id=user_id,
+    )
+
     msg = f"已摄取到知识库\n\n**{page_title}**\n领域：{domain}\n{summary}"
     if concept_names:
         msg += f"\n新概念：{', '.join(concept_names)}"
@@ -143,6 +155,16 @@ def handle_query_msg(user_id: str, question: str, send_md, send_tpl):
 
     # 企业微信 markdown 消息字数上限约 4096，但实际编码后可能超，取 3000 保守
     send_md(user_id, answer[:3000])
+
+    # 记录结构化记忆
+    from knowledge_wiki.wiki.search import extract_wikilinks
+    used_pages = list(set(extract_wikilinks(context)))[:10]
+    memory_record_query(
+        question=question,
+        pages=used_pages,
+        concepts=[],
+        user_id=user_id,
+    )
 
 
 def handle_inbox_text(user_id: str, text: str, send_md):

@@ -106,11 +106,39 @@ def match_skill(intent: str) -> Skill | None:
     return None
 
 
+# 强信号词 → 技能映射（预处理，不需要 LLM）
+# 这些词足够明确，即使 LLM 误判也能纠正
+_STRONG_SIGNALS = [
+    (["加到待办", "加入到待办", "添加到待办", "记一个待办", "创建待办", "新建待办", "加一个待办", "弄到待办"], "todo-manage"),
+    (["待办列表", "查看待办", "我的待办", "有哪些待办", "列出待办"], "todo-manage"),
+    (["记一下", "记个笔记", "备忘", "闪念"], "note-quick"),
+    (["收藏链接", "收藏网址", "加个书签"], "bookmark-save"),
+    (["今天要做什么", "今天有什么", "明天要做什么", "我的日程"], "schedule-view"),
+    (["早报", "晚报", "今日简报"], "daily-brief"),
+    (["打卡", "习惯打卡"], "habit-track"),
+    (["健康检查", "巡检", "知识库检查"], "lint-wiki"),
+]
+
+
+def _check_strong_signals(text: str) -> str | None:
+    """检查文本是否包含强信号词，直接返回技能名."""
+    for keywords, skill_name in _STRONG_SIGNALS:
+        for kw in keywords:
+            if kw in text:
+                return skill_name
+    return None
+
+
 def classify_intent_llm(text: str) -> str | None:
     """用本地 Ollama 做意图分类，返回技能名.
 
-    比关键词匹配强在：理解语义而非匹配字符串。
+    先检查强信号词（不需要 LLM），未命中时再用 LLM 分类。
     """
+    # 1. 强信号词检查
+    result = _check_strong_signals(text)
+    if result:
+        return result
+
     skills = list_skills()
     if not skills:
         return None

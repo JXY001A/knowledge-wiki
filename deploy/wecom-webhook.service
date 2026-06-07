@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/jxy001a1/code/knowledge-wiki/.venv/bin/python3 -m knowledge_wiki webhook
+ExecStart=/usr/bin/sg audio -c \"/home/jxy001a1/code/knowledge-wiki/.venv/bin/python3 -m knowledge_wiki webhook\"
 WorkingDirectory=/home/jxy001a1/code/knowledge-wiki
 Restart=always
 RestartSec=5

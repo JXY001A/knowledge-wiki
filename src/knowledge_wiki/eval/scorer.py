@@ -156,19 +156,39 @@ def evaluate_and_record(question: str, answer: str, wiki_context: str = "",
     if not result:
         return None
 
-    # 写入记忆库（最近的 query 记录）
+    # 写入记忆库
     try:
         from knowledge_wiki.memory.db import get_db, init_schema
+        from knowledge_wiki.memory.models import EpisodicRecord
+        from datetime import datetime, timezone
+
         conn = get_db()
         init_schema(conn)
-        # 更新最近一条 query 记录的评分
-        conn.execute(
-            "UPDATE memory_events SET score = ?, details = details || ? "
+
+        # 尝试更新最近的 query 记录
+        updated = conn.execute(
+            "UPDATE memory_events SET score = ? "
             "WHERE event_type = 'query' AND user_id = ? "
             "ORDER BY created_at DESC LIMIT 1",
-            [result.overall, f"\n\n评估：{result.stars} (A{result.accuracy}/C{result.completeness}/U{result.usefulness})",
-             user_id],
-        )
+            [result.overall, user_id],
+        ).rowcount
+
+        # 如果没有 query 记录，直接插入评估记录
+        if updated == 0:
+            record = EpisodicRecord(
+                event_type="eval",
+                summary=f"评估：{question[:60]}",
+                details=f"问题：{question[:200]}\n回答：{answer[:200]}\n评分：{result.stars} (A{result.accuracy}/C{result.completeness}/U{result.usefulness})",
+                score=result.overall,
+                user_id=user_id,
+                source="auto",
+                tags=["评估"],
+            )
+            d = record.to_dict()
+            cols = ", ".join(d.keys())
+            ph = ", ".join("?" for _ in d)
+            conn.execute(f"INSERT INTO memory_events ({cols}) VALUES ({ph})", list(d.values()))
+
         conn.commit()
         conn.close()
     except Exception as e:

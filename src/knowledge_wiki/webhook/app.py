@@ -84,6 +84,40 @@ def create_app() -> Flask:
             "inbox_exists": RAW_INBOX.exists(),
         })
 
+    # 主页面
+    @app.route("/", methods=["GET"])
+    def index():
+        """Web 端聊天入口."""
+        from pathlib import Path
+        html_path = Path(__file__).parent / "templates" / "index.html"
+        return html_path.read_text(encoding="utf-8")
+
+    # 聊天 API
+    @app.route("/chat", methods=["POST"])
+    def chat_api():
+        """Web 端聊天 API — 复用 process_message 引擎."""
+        from knowledge_wiki.webhook.process import process_message
+
+        data = request.get_json()
+        text = data.get("text", "").strip()
+        if not text:
+            return jsonify({"reply": "请输入内容", "history": []})
+
+        replies = []
+
+        def collect_reply(uid, content):
+            replies.append(content)
+
+        def noop(*a, **kw):
+            pass
+
+        process_message("web_user", text, collect_reply, noop)
+
+        return jsonify({
+            "reply": replies[0] if replies else "处理完成",
+            "history": [],
+        })
+
     # 管理后台
     @app.route("/admin", methods=["GET"])
     def admin_dashboard():

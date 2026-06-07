@@ -2,49 +2,54 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>AI 自进化知识系统 — 管理后台</title>
+<title>管理后台 — AI 自进化知识系统</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
-.header{background:#1e293b;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;position:sticky;top:0;z-index:10}
-.header h1{font-size:18px;color:#38bdf8}
-.header .time{font-size:12px;color:#94a3b8}
-.tabs{display:flex;gap:4px;padding:8px 16px;background:#1e293b;border-bottom:1px solid #334155}
-.tab{padding:6px 16px;border-radius:6px;border:none;background:transparent;color:#94a3b8;cursor:pointer;font-size:13px}
-.tab.active{background:#38bdf8;color:#0f172a}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;padding:16px}
-.card{background:#1e293b;border-radius:12px;padding:16px;border:1px solid #334155}
-.card h3{font-size:13px;color:#94a3b8;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
+:root{--bg:#f8fafc;--surface:#fff;--border:#e2e8f0;--text:#1e293b;--sub:#64748b;--brand:#3b82f6}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.topbar .brand{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.topbar .brand a{color:var(--text);text-decoration:none}
+.topbar .brand a:hover{color:var(--brand)}
+.topbar .time{font-size:12px;color:var(--sub)}
+.tabs{display:flex;gap:2px;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+.tab{padding:6px 16px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--sub);cursor:pointer;font-size:13px;font-weight:500;transition:all .15s}
+.tab:hover{background:var(--bg);color:var(--text)}
+.tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;padding:20px 24px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;text-align:center}
+.stat .value{font-size:28px;font-weight:700;color:var(--brand)}
+.stat .label{font-size:12px;color:var(--sub);margin-top:4px}
+.stat .sub{font-size:11px;color:#94a3b8;margin-top:2px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;padding:0 24px 24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+.card h3{font-size:12px;color:var(--sub);margin-bottom:14px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
 .card canvas{max-height:220px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;padding:16px}
-.stat{background:#1e293b;border-radius:12px;padding:16px;text-align:center;border:1px solid #334155}
-.stat .value{font-size:28px;font-weight:700;color:#38bdf8}
-.stat .label{font-size:11px;color:#94a3b8;margin-top:4px}
-.stat .sub{font-size:11px;color:#64748b;margin-top:2px}
 .wide{grid-column:span 2}
-.list{list-style:none;max-height:360px;overflow-y:auto}
-.list li{padding:6px 8px;border-bottom:1px solid #1e293b;font-size:13px;display:flex;justify-content:space-between;align-items:center}
-.list li:hover{background:#1e293b}
-.badge{background:#334155;padding:2px 8px;border-radius:10px;font-size:11px;color:#94a3b8}
-.badge.green{background:#064e3b;color:#4ade80}
-.badge.yellow{background:#422006;color:#fbbf24}
-.badge.blue{background:#1e3a5f;color:#38bdf8}
+.list{list-style:none;max-height:380px;overflow-y:auto;font-size:13px}
+.list li{padding:8px 10px;border-bottom:1px solid var(--bg);display:flex;justify-content:space-between;align-items:center;border-radius:6px}
+.list li:hover{background:var(--bg)}
+.badge{background:var(--bg);padding:2px 10px;border-radius:12px;font-size:11px;color:var(--sub)}
+.badge.green{background:#dcfce7;color:#16a34a}
+.badge.yellow{background:#fef9c3;color:#a16207}
+.badge.blue{background:#dbeafe;color:var(--brand)}
+.dir-group{margin-bottom:16px}
+.dir-name{font-size:13px;color:var(--brand);margin-bottom:6px;font-weight:600}
+.dir-pages{display:flex;flex-wrap:wrap;gap:6px}
+.page-chip{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:11px;color:var(--text);transition:all .1s}
+.page-chip:hover{border-color:var(--brand)}
 .skill-row{display:flex;align-items:center;gap:8px}
-.tag{display:inline-block;background:#1e3a5f;color:#38bdf8;padding:1px 6px;border-radius:4px;font-size:10px;margin:1px}
-.dir-group{margin-bottom:12px}
-.dir-name{font-size:12px;color:#38bdf8;margin-bottom:4px;font-weight:600}
-.dir-pages{display:flex;flex-wrap:wrap;gap:4px}
-.page-chip{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:3px 8px;font-size:11px;white-space:nowrap}
-.log-score{font-weight:700}
-.refresh{font-size:11px;color:#64748b;text-align:center;padding:8px}
+.tag{display:inline-block;background:var(--bg);color:var(--sub);padding:1px 6px;border-radius:4px;font-size:10px;margin:1px}
+.log-score{font-weight:600;color:var(--brand)}
+.refresh{font-size:11px;color:var(--sub);text-align:center;padding:16px}
 .section{display:none}.section.active{display:block}
-@media(max-width:640px){.wide{grid-column:span 1}.grid{grid-template-columns:1fr}}
+@media(max-width:640px){.wide{grid-column:span 1}.grid{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>🧠 AI 自进化知识系统</h1>
+<div class="topbar">
+  <div class="brand"><a href="/">🧠 AI 自进化知识系统</a> <span style="color:var(--sub);font-weight:400">/ 管理后台</span></div>
   <span class="time" id="clock"></span>
 </div>
 
@@ -55,20 +60,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f172a;
   <button class="tab" onclick="switchTab('logs')">📋 操作日志</button>
 </div>
 
-<!-- Overview Tab -->
 <div class="section active" id="tab-overview">
 <div class="stats" id="overview"></div>
 <div class="grid">
-  <div class="card wide"><h3>📊 评估趋势</h3><canvas id="evalChart"></canvas></div>
+  <div class="card wide"><h3>📊 评估趋势（近 30 天）</h3><canvas id="evalChart"></canvas></div>
   <div class="card"><h3>📈 知识增长</h3><canvas id="growthChart"></canvas></div>
   <div class="card"><h3>🧠 记忆分布</h3><canvas id="memoryChart"></canvas></div>
   <div class="card"><h3>✅ 待办概览</h3><canvas id="todoChart"></canvas></div>
-  <div class="card"><h3>🔍 知识缺口 Top 10</h3><ul class="list" id="gaps"></ul></div>
+  <div class="card"><h3>🔍 知识缺口</h3><ul class="list" id="gaps"></ul></div>
   <div class="card"><h3>⏰ 活跃提醒</h3><ul class="list" id="reminders"></ul></div>
 </div>
 </div>
 
-<!-- Skills Tab -->
 <div class="section" id="tab-skills">
 <div class="stats" id="skillStats"></div>
 <div class="grid">
@@ -77,31 +80,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f172a;
 </div>
 </div>
 
-<!-- Wiki Tab -->
 <div class="section" id="tab-wiki">
 <div class="stats" id="wikiStats"></div>
-<div class="grid">
-  <div class="card"><h3>📚 知识库目录</h3><div id="wikiDirs"></div></div>
-</div>
+<div class="grid"><div class="card"><h3>📚 知识库目录</h3><div id="wikiDirs"></div></div></div>
 </div>
 
-<!-- Logs Tab -->
 <div class="section" id="tab-logs">
-<div class="grid">
-  <div class="card wide"><h3>📋 操作日志（最近 50 条）</h3><ul class="list" id="queryLog"></ul></div>
-</div>
+<div class="grid"><div class="card wide"><h3>📋 操作日志（最近 50 条）</h3><ul class="list" id="queryLog"></ul></div></div>
 </div>
 
-<div class="refresh">每 60 秒自动刷新 | 最后更新: <span id="lastUpdate"></span></div>
+<div class="refresh">每 60 秒自动刷新 · <span id="lastUpdate"></span></div>
 
 <script>
-const colors=['#38bdf8','#4ade80','#fbbf24','#f87171','#a78bfa','#fb923c','#2dd4bf','#e879f9'];
+const colors=['#3b82f6','#16a34a','#eab308','#ef4444','#8b5cf6','#f97316','#06b6d4','#ec4899'];
 let charts={},data={};
 
 async function load(){
   const resp=await fetch('/admin/data'); data=await resp.json();
   renderOverview(); renderSkills(); renderWiki(); renderLogs();
-  document.getElementById('lastUpdate').textContent=new Date().toLocaleTimeString();
+  document.getElementById('lastUpdate').textContent='最后更新 '+new Date().toLocaleTimeString();
 }
 
 function renderOverview(){
@@ -110,38 +107,34 @@ function renderOverview(){
     `<div class="stat"><div class="value">${ov.wiki_pages}</div><div class="label">Wiki 页面</div><div class="sub">${ov.concepts} 概念</div></div>`+
     `<div class="stat"><div class="value">⭐ ${ov.eval_avg}</div><div class="label">评估均分</div><div class="sub">${ov.eval_count} 次</div></div>`+
     `<div class="stat"><div class="value">${ov.memories}</div><div class="label">记忆记录</div></div>`+
-    `<div class="stat"><div class="value">${ov.todos_pending}/${ov.todos_total}</div><div class="label">待办（未完成/总数）</div></div>`;
+    `<div class="stat"><div class="value">${ov.todos_pending}/${ov.todos_total}</div><div class="label">待办</div><div class="sub">未完成/总数</div></div>`;
 
   chart('evalChart','line',{
     labels:data.eval_trend.map(r=>r.date.slice(5)),
-    datasets:[{label:'均分',data:data.eval_trend.map(r=>r.avg),borderColor:'#38bdf8',tension:.3,fill:false},
-              {label:'次数',data:data.eval_trend.map(r=>r.count),borderColor:'#4ade80',tension:.3,fill:false,yAxisID:'y1'}]
+    datasets:[{label:'均分',data:data.eval_trend.map(r=>r.avg),borderColor:'#3b82f6',tension:.3,fill:false},
+              {label:'次数',data:data.eval_trend.map(r=>r.count),borderColor:'#16a34a',tension:.3,fill:false,yAxisID:'y1'}]
   },{scales:{y:{min:0,max:5,ticks:{stepSize:1}},y1:{position:'right',grid:{display:false},min:0}}});
 
   chart('growthChart','line',{
     labels:data.wiki_growth.map(r=>r.date.slice(5)),
-    datasets:[{label:'Wiki 页面数',data:data.wiki_growth.map(r=>r.pages),borderColor:'#4ade80',fill:true,backgroundColor:'rgba(74,222,128,0.1)',tension:.3}]
+    datasets:[{label:'页面数',data:data.wiki_growth.map(r=>r.pages),borderColor:'#16a34a',fill:true,backgroundColor:'rgba(22,163,74,0.08)',tension:.3,pointRadius:2}]
   });
 
   const mem=data.memory_dist;
-  chart('memoryChart','doughnut',{
-    labels:mem.labels,datasets:[{data:mem.counts,backgroundColor:colors}]
-  });
+  chart('memoryChart','doughnut',{labels:mem.labels,datasets:[{data:mem.counts,backgroundColor:colors}]});
   const td=data.todos;
-  chart('todoChart','doughnut',{
-    labels:['未完成','已完成','已取消'],datasets:[{data:[td.pending,td.done,td.cancelled],backgroundColor:['#fbbf24','#4ade80','#94a3b8']}]
-  });
-  document.getElementById('gaps').innerHTML=data.gaps.map(g=>`<li><span>${g.topic}</span><span class="badge">${g.count}次</span></li>`).join('')||'<li>暂无缺口</li>';
-  document.getElementById('reminders').innerHTML=data.reminders.map(r=>`<li><span>${r.content}</span><span style="color:#38bdf8;font-family:monospace">${r.trigger||''}</span></li>`).join('')||'<li>暂无提醒</li>';
+  chart('todoChart','doughnut',{labels:['未完成','已完成','已取消'],datasets:[{data:[td.pending,td.done,td.cancelled],backgroundColor:['#eab308','#16a34a','#94a3b8']}]});
+
+  document.getElementById('gaps').innerHTML=data.gaps.map(g=>`<li><span>${g.topic}</span><span class="badge">${g.count}次</span></li>`).join('')||'<li style="color:var(--sub)">暂无缺口数据</li>';
+  document.getElementById('reminders').innerHTML=data.reminders.map(r=>`<li><span>${r.content}</span><span style="color:var(--brand);font-family:monospace;font-size:12px">${r.trigger||''}</span></li>`).join('')||'<li style="color:var(--sub)">暂无活跃提醒</li>';
 }
 
 function renderSkills(){
   const skills=data.skills||[];
-  const tier1=skills.filter(s=>s.tier===1).length, tier2=skills.filter(s=>s.tier===2).length;
   document.getElementById('skillStats').innerHTML=
-    `<div class="stat"><div class="value">${skills.length}</div><div class="label">总 Skills</div><div class="sub">T1:${tier1} T2:${tier2}</div></div>`+
-    `<div class="stat"><div class="value">${new Set(skills.map(s=>s.model)).size}</div><div class="label">模型类型</div></div>`+
-    `<div class="stat"><div class="value">${skills.reduce((a,s)=>a+s.count,0)}</div><div class="label">总执行次数</div></div>`;
+    `<div class="stat"><div class="value">${skills.length}</div><div class="label">总 Skills</div></div>`+
+    `<div class="stat"><div class="value">${skills.reduce((a,s)=>a+(s.count||0),0)}</div><div class="label">总执行次数</div></div>`+
+    `<div class="stat"><div class="value">${skills.filter(s=>s.tier===1).length}</div><div class="label">核心 (T1)</div></div>`;
 
   document.getElementById('skillList').innerHTML=skills.map(s=>
     `<li><div class="skill-row"><span>${s.name}</span><span class="badge blue">T${s.tier}</span><span class="badge">${s.model}</span></div><span class="badge green">${s.count||0}次</span></li>`
@@ -149,32 +142,32 @@ function renderSkills(){
 
   const td=data.todos;
   document.getElementById('recentTodos').innerHTML=td.recent.map(t=>
-    `<li><span style="color:${t.status==='done'?'#4ade80':t.status==='cancelled'?'#94a3b8':'#fbbf24'}">${t.status==='done'?'✅':'⏳'} ${t.title}</span><span style="font-size:11px;color:#64748b">${t.created||''}${t.deadline?' | ⏰'+t.deadline:''}</span></li>`
-  ).join('')||'<li>暂无待办</li>';
+    `<li><span style="color:${t.status==='done'?'#16a34a':t.status==='cancelled'?'#94a3b8':'#eab308'}">${t.status==='done'?'✅':'⏳'} ${t.title}</span><span style="font-size:11px;color:var(--sub)">${t.created||''}${t.deadline?' · ⏰'+t.deadline:''}</span></li>`
+  ).join('')||'<li style="color:var(--sub)">暂无待办</li>';
 }
 
 function renderWiki(){
   const pages=data.wiki_pages||[];
-  const totalPages=pages.reduce((a,d)=>a+d.count,0);
+  const total=pages.reduce((a,d)=>a+d.count,0);
   document.getElementById('wikiStats').innerHTML=
-    `<div class="stat"><div class="value">${totalPages}</div><div class="label">总页面</div></div>`+
+    `<div class="stat"><div class="value">${total}</div><div class="label">总页面</div></div>`+
     `<div class="stat"><div class="value">${pages.length}</div><div class="label">目录数</div></div>`;
 
   document.getElementById('wikiDirs').innerHTML=pages.map(d=>
-    `<div class="dir-group"><div class="dir-name">📁 ${d.directory} (${d.count})</div><div class="dir-pages">${d.pages.map(p=>`<span class="page-chip" title="${p.tags.join(', ')}">${p.title}</span>`).join('')}</div></div>`
+    `<div class="dir-group"><div class="dir-name">📁 ${d.directory} (${d.count})</div><div class="dir-pages">${d.pages.map(p=>`<span class="page-chip" title="${(p.tags||[]).join(', ')}">${p.title}</span>`).join('')}</div></div>`
   ).join('');
 }
 
 function renderLogs(){
   const logs=data.query_log||[];
   document.getElementById('queryLog').innerHTML=logs.map(l=>
-    `<li><span>${l.icon} ${l.summary}</span><span>${l.score?`<span class="log-score">⭐${l.score}</span> `:''}<span style="color:#64748b;font-size:11px">${l.created}</span></span></li>`
-  ).join('')||'<li>暂无操作记录</li>';
+    `<li><span>${l.icon} ${l.summary}</span><span>${l.score?`<span class="log-score">⭐${l.score}</span> `:''}<span style="color:var(--sub);font-size:11px">${l.created}</span></span></li>`
+  ).join('')||'<li style="color:var(--sub)">暂无操作记录</li>';
 }
 
 function chart(id,type,config,extra={}){
   if(charts[id])charts[id].destroy();
-  charts[id]=new Chart(document.getElementById(id),{type,data:config,options:{...extra,responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94a3b8',font:{size:11}}}}}});
+  charts[id]=new Chart(document.getElementById(id),{type,data:config,options:{...extra,responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#64748b',font:{size:11}}}}}});
 }
 
 function switchTab(name){

@@ -22,6 +22,10 @@ from dataclasses import dataclass, field
 from knowledge_wiki.config import settings
 
 
+# @dataclass 装饰器：自动生成 __init__、__repr__、__eq__ 三个方法
+# 省去手写构造函数的样板代码，直接用类型注解声明字段即可
+# 注意：可变默认值（如 list）必须用 field(default_factory=list)，
+#       直接写 [] 会导致所有实例共享同一个列表对象
 @dataclass
 class Skill:
     """技能定义 — skill.json 的内存表示.

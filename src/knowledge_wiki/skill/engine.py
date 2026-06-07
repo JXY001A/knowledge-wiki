@@ -135,7 +135,6 @@ def _check_remind_or_todo(text: str) -> str | None:
         if len(after) >= 2:
             return "todo-manage"
     return None
-]
 
 
 def _check_strong_signals(text: str) -> str | None:

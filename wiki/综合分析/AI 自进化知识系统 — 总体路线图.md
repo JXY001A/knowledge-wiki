@@ -35,7 +35,7 @@ confidence: high
         │                         │                         │
         │                         │                         │
   Phase 1 ██ 知识基座       Track A ██ 检索升级      部署拓扑
-  Phase 2 ██ 技能体系       Track B ▓▓ 个人助手      Git 同步
+  Phase 2 ██ 技能体系       Track B ██ 个人助手      Git 同步
   Phase 3 ██ 记忆系统       Track C ░░ 图表自动化     健康监控
   Phase 4 ░░ 评估反馈
   Phase 5 ░░ 自进化

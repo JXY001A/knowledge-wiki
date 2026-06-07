@@ -24,6 +24,11 @@ dist/
 # Retrieval cache (索引不入 git，每台机器自己重建)
 .cache/
 
+# 助理/记忆数据（SQLite 二进制不入 git，通过 SQL dump 备份）
+wiki/.data/*.db
+wiki/.data/*.db-wal
+wiki/.data/*.db-shm
+
 # Temporary
 *.tmp
 *.bak

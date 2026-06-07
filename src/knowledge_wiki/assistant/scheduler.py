@@ -100,6 +100,15 @@ def _create_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
 
+    # 每周自检报告（周日 10:00）
+    scheduler.add_job(
+        _job_weekly_report,
+        CronTrigger(day_of_week="sun", hour=10, minute=7),
+        id="system:weekly-report",
+        name="每周自检报告",
+        replace_existing=True,
+    )
+
     # 每分钟同步数据库提醒到 scheduler（webhook 独立进程无法直接注册 job）
     scheduler.add_job(
         _job_sync_reminders,
@@ -254,6 +263,16 @@ def _job_git_retry():
             _log.info("[scheduler] git 重试: %d 条, %s", count, result)
     except Exception as e:
         _log.warning("[scheduler] git 重试失败: %s", e)
+
+
+def _job_weekly_report():
+    """生成并推送周度自检报告."""
+    try:
+        from knowledge_wiki.evolve.reporter import weekly_report
+        report = weekly_report()
+        _push_to_user("system", report[:3000])
+    except Exception as e:
+        _log.warning("[scheduler] 周报生成失败: %s", e)
 
 
 def _job_sync_reminders():

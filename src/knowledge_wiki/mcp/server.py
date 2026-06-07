@@ -474,6 +474,59 @@ def create_server() -> FastMCP:
     mcp.tool()(eval_last)
     mcp.tool()(eval_stats)
 
+    # 注册 Phase 5 自进化工具
+    from knowledge_wiki.evolve.reporter import weekly_report
+    from knowledge_wiki.evolve.gap_detector import detect_gaps, generate_ingest_list
+
+    async def evolve_report() -> str:
+        """生成系统自检报告（知识库概览 + 缺口 + Skill 统计 + 建议）."""
+        return weekly_report()
+
+    async def evolve_gaps() -> str:
+        """检测知识缺口（从低分评估中提取）."""
+        gaps = detect_gaps()
+        if not gaps:
+            return "✅ 暂无低分评估记录，未检测到知识缺口。"
+        lines = [f"## 知识缺口（{len(gaps)} 条低分记录）\n"]
+        for g in gaps[:10]:
+            lines.append(f"- [{g['score']}/5] {g['question']}")
+            if g["gaps"]:
+                lines.append(f"  缺口：{', '.join(g['gaps'][:3])}")
+        return "\n".join(lines)
+
+    async def evolve_ingest_list() -> str:
+        """生成待摄取清单（缺口概念 + 未处理资料 + 缺失概念）."""
+        data = generate_ingest_list()
+        lines = ["## 待摄取清单\n"]
+
+        gaps = data.get("gaps", [])
+        if gaps:
+            lines.append("### 知识缺口（按频次）")
+            for g in gaps[:8]:
+                lines.append(f"- {g['topic']}（{g['count']} 次）")
+
+        missing = data.get("missing_concepts", [])
+        if missing:
+            lines.append("\n### 缺失概念页")
+            for m in missing[:5]:
+                name = m.get("title", m) if isinstance(m, dict) else m
+                lines.append(f"- {name}")
+
+        raw_files = data.get("unprocessed_raw", [])
+        if raw_files:
+            lines.append(f"\n### 待处理资料（{len(raw_files)} 份）")
+            for f in raw_files[:5]:
+                lines.append(f"- `{f}`")
+
+        if not gaps and not missing and not raw_files:
+            lines.append("✅ 知识库状态良好，暂无待摄取项。")
+
+        return "\n".join(lines)
+
+    mcp.tool()(evolve_report)
+    mcp.tool()(evolve_gaps)
+    mcp.tool()(evolve_ingest_list)
+
     # 注册 Phase 2 技能工具
     from knowledge_wiki.skill.registry import get_skills_summary
     from knowledge_wiki.skill.planner import execute_skill

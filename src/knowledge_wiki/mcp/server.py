@@ -527,6 +527,20 @@ def create_server() -> FastMCP:
     mcp.tool()(evolve_gaps)
     mcp.tool()(evolve_ingest_list)
 
+    # 注册自动摄取工具
+    from knowledge_wiki.evolve.auto_ingest import suggest_ingest, auto_ingest_topic, suggest_markdown
+
+    async def evolve_suggest() -> str:
+        """搜索知识缺口的补充文章，返回摄取建议."""
+        return suggest_markdown()
+
+    async def evolve_auto_ingest(url: str, topic: str = "") -> str:
+        """自动摄取指定 URL 的文章（下载 + DeepSeek 分析 + wiki 页面）."""
+        return auto_ingest_topic(topic or "手动指定", url)
+
+    mcp.tool()(evolve_suggest)
+    mcp.tool()(evolve_auto_ingest)
+
     # 注册 Phase 2 技能工具
     from knowledge_wiki.skill.registry import get_skills_summary
     from knowledge_wiki.skill.planner import execute_skill

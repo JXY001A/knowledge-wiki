@@ -266,11 +266,18 @@ def _job_git_retry():
 
 
 def _job_weekly_report():
-    """生成并推送周度自检报告."""
+    """生成并推送周度自检报告（含自动摄取建议）."""
     try:
         from knowledge_wiki.evolve.reporter import weekly_report
+        from knowledge_wiki.evolve.auto_ingest import suggest_markdown
+
         report = weekly_report()
-        _push_to_user("system", report[:3000])
+        suggestions = suggest_markdown()
+
+        # 合并报告和建议
+        full = report + "\n\n" + suggestions
+        _push_to_user("system", full[:3000])
+        _log.info("[scheduler] 周报已推送")
     except Exception as e:
         _log.warning("[scheduler] 周报生成失败: %s", e)
 

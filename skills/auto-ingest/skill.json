@@ -1,0 +1,1 @@
+{"name":"auto-ingest","version":"1.0","description":"自动搜索知识缺口并摄取：搜索 → 建议 → 摄入","tier":2,"model":"deepseek","tools":["evolve_suggest","evolve_auto_ingest"],"triggers":["自动摄取","搜索缺口","补全知识"],"dependencies":["ingest-article"]}

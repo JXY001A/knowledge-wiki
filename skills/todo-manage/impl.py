@@ -105,7 +105,9 @@ def _create(parsed: dict, raw_text: str, user_id: str, send_md) -> str:
                 c2.commit()
                 c2.close()
 
-                add_reminder_job(r.id, title, reminder_dt, user_id=user_id)
+                # threading.Timer 直接推送
+                from skills.remind_set.impl import _schedule_push
+                _schedule_push(r.id, title, reminder_dt, user_id=user_id)
                 msg += f"\n⏰ 将在 {reminder_dt[:16]} 提醒"
         except Exception:
             pass  # 调度器未启动
@@ -209,6 +211,44 @@ def _delete(keyword: str, user_id: str, send_md) -> str:
     if send_md:
         send_md(user_id, msg)
     return msg
+
+
+def _extract_time_from_text(text: str, deadline: str | None) -> str | None:
+    """从自然语言中提取具体时间，结合 deadline 生成 ISO 时间戳."""
+    import re
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    hour = None
+    minute = 0
+
+    m = re.search(r"(上午|下午|晚上|中午)?(\d{1,2})[点:：](\d{0,2})?", text)
+    if m:
+        period = m.group(1) or ""
+        hour = int(m.group(2))
+        minute = int(m.group(3)) if m.group(3) else 0
+        if "下午" in period and hour < 12:
+            hour += 12
+        elif "晚上" in period and hour < 12:
+            hour += 12
+        elif period == "上午" and hour == 12:
+            hour = 0
+        elif "中午" in period and hour < 12:
+            hour += 12
+
+    if hour is None:
+        return None
+    if hour > 23: hour = 23
+    if minute > 59: minute = 59
+
+    date_str = deadline if deadline else now.strftime("%Y-%m-%d")
+    try:
+        target_dt = datetime.fromisoformat(f"{date_str}T{hour:02d}:{minute:02d}:00")
+        if target_dt <= now:
+            target_dt += timedelta(days=1)
+        return target_dt.isoformat()
+    except (ValueError, TypeError):
+        return f"{date_str}T{hour:02d}:{minute:02d}:00"
 
 
 def _extract_time_from_text(text: str, deadline: str | None) -> str | None:

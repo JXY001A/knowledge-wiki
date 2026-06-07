@@ -165,12 +165,14 @@ def evaluate_and_record(question: str, answer: str, wiki_context: str = "",
         conn = get_db()
         init_schema(conn)
 
+        gaps_text = f"\n知识缺口：{', '.join(result.gaps)}" if result.gaps else ""
+
         # 尝试更新最近的 query 记录
         updated = conn.execute(
-            "UPDATE memory_events SET score = ? "
+            "UPDATE memory_events SET score = ?, details = details || ? "
             "WHERE event_type = 'query' AND user_id = ? "
             "ORDER BY created_at DESC LIMIT 1",
-            [result.overall, user_id],
+            [result.overall, gaps_text, user_id],
         ).rowcount
 
         # 如果没有 query 记录，直接插入评估记录
@@ -178,7 +180,7 @@ def evaluate_and_record(question: str, answer: str, wiki_context: str = "",
             record = EpisodicRecord(
                 event_type="eval",
                 summary=f"评估：{question[:60]}",
-                details=f"问题：{question[:200]}\n回答：{answer[:200]}\n评分：{result.stars} (A{result.accuracy}/C{result.completeness}/U{result.usefulness})",
+                details=f"问题：{question[:200]}\n回答：{answer[:200]}\n评分：{result.stars} (A{result.accuracy}/C{result.completeness}/U{result.usefulness}){gaps_text}",
                 score=result.overall,
                 user_id=user_id,
                 source="auto",

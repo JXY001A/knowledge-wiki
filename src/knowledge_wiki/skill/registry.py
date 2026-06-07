@@ -54,6 +54,9 @@ class Skill:
     dependencies: list[str] = field(default_factory=list) # 依赖的其他技能
     path: Path | None = None           # 技能目录的文件系统路径（运行时注入）
 
+    # @classmethod 类方法：第一个参数是类本身(cls)而非实例(self)
+    # 工厂方法模式 — 不需要已有实例，直接 Skill.from_json(data) 调用
+    # 内部 cls(...) 等价于 Skill(...)，构造并返回新实例
     @classmethod
     def from_json(cls, data: dict, path: Path | None = None) -> "Skill":
         """从 skill.json 的解析结果构造 Skill 实例.

@@ -110,7 +110,7 @@ def _show_stats(user_id: str, send_md) -> str:
 
     if not habits:
         conn.close()
-        msg = "暂无习惯记录。\n\n发送"打卡 <习惯名>"开始记录！"
+        msg = '暂无习惯记录。\n\n发送「打卡 <习惯名>」开始记录！'
         if send_md:
             send_md(user_id, msg)
         return msg

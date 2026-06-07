@@ -34,7 +34,7 @@ def execute(context: dict) -> str:
         return _complete_todo(text, user_id, send_md)
     elif any(kw in text for kw in ["取消", "删除", "删掉"]):
         return _delete_todo(text, user_id, send_md)
-    elif any(kw in text for kw in ["有哪些", "列出", "查看", "待办列表"]):
+    elif any(kw in text for kw in ["有哪些", "列出", "查看", "待办列表", "列表"]):
         return _list_todos(user_id, send_md)
     else:
         return _create_todo(text, user_id, send_md)
@@ -109,7 +109,7 @@ def _list_todos(user_id: str, send_md) -> str:
     conn.close()
 
     if not rows:
-        msg = "暂无待办事项。\n\n发送"待办 <内容>"来创建第一条。"
+        msg = '暂无待办事项。\n\n发送「待办 <内容>」来创建第一条。'
     else:
         todos = [Todo.from_row(r) for r in rows]
         lines = ["## 待办列表", ""]
@@ -139,7 +139,7 @@ def _complete_todo(text: str, user_id: str, send_md) -> str:
     keyword = text.replace("完成", "").replace("done", "").replace("搞定", "").strip()
     if not keyword:
         conn.close()
-        msg = "请指定要完成的待办，如"完成 提交Q2报告""
+        msg = '请指定要完成的待办，如「完成 提交Q2报告」'
         if send_md:
             send_md(user_id, msg)
         return msg

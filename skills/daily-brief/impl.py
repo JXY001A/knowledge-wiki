@@ -1,6 +1,6 @@
 """daily-brief 技能实现 — 早报/晚报生成."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def execute(context: dict) -> str:
@@ -86,8 +86,6 @@ def execute(context: dict) -> str:
             lines.append(f"- 最近：{last[:60]}")
 
     msg = "\n".join(lines)
-
-    from datetime import timedelta
 
     if send_md:
         send_md(user_id, msg[:3000])

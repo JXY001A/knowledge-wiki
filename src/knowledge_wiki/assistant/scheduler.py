@@ -232,7 +232,7 @@ def _save_jobs(scheduler: BackgroundScheduler) -> None:
                     "id": job.id,
                     "name": job.name,
                     "trigger": str(job.trigger),
-                    "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+                    "next_run": str(job.next_run_time) if hasattr(job, 'next_run_time') and job.next_run_time else None,
                     "kwargs": dict(job.kwargs),
                 })
 

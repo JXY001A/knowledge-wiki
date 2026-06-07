@@ -21,7 +21,89 @@ def dashboard_data() -> dict:
         "skills": _skills(),
         "wiki_pages": _wiki_page_list(),
         "query_log": _query_log(),
+        "server_status": _server_status(),
     }
+
+
+def _server_status() -> dict:
+    """DevMechin 服务器状态."""
+    import subprocess, os
+
+    services = {}
+    # 检查 systemd 服务
+    for name in ["wiki-mcp", "wecom-webhook", "wiki-scheduler"]:
+        try:
+            r = subprocess.run(
+                ["systemctl", "--user", "is-active", name],
+                capture_output=True, text=True, timeout=5,
+            )
+            services[name] = r.stdout.strip() == "active"
+        except Exception:
+            services[name] = False
+
+    # Ollama
+    try:
+        r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                           "http://localhost:11434/api/tags"], capture_output=True, text=True, timeout=5)
+        services["ollama"] = r.stdout.strip() == "200"
+    except Exception:
+        services["ollama"] = False
+
+    # FRP
+    try:
+        r = subprocess.run(["systemctl", "--user", "is-active", "frpc"],
+                          capture_output=True, text=True, timeout=5)
+        services["frpc"] = r.stdout.strip() == "active"
+    except Exception:
+        services["frpc"] = False
+
+    # GPU
+    gpu = {}
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
+                           "--format=csv,noheader"], capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            parts = r.stdout.strip().split(",")
+            if len(parts) >= 5:
+                gpu = {"name": parts[0].strip(), "util": parts[1].strip(),
+                       "mem_used": parts[2].strip(), "mem_total": parts[3].strip(),
+                       "temp": parts[4].strip()}
+    except Exception:
+        pass
+
+    # System
+    system = {}
+    try:
+        r = subprocess.run(["uptime", "-p"], capture_output=True, text=True, timeout=5)
+        system["uptime"] = r.stdout.strip().replace("up ", "")
+    except Exception:
+        system["uptime"] = "?"
+
+    try:
+        r = subprocess.run(["free", "-h"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.split("\n"):
+            if "Mem:" in line:
+                parts = line.split()
+                system["mem_used"] = parts[2]
+                system["mem_total"] = parts[1]
+                break
+    except Exception:
+        pass
+
+    try:
+        r = subprocess.run(["df", "-h", "/"], capture_output=True, text=True, timeout=5)
+        lines = r.stdout.strip().split("\n")
+        if len(lines) >= 2:
+            parts = lines[1].split()
+            if len(parts) >= 5:
+                system["disk_used"] = parts[2]
+                system["disk_total"] = parts[1]
+                system["disk_pct"] = parts[4]
+    except Exception:
+        pass
+
+    return {"services": services, "gpu": gpu, "system": system}
+
 
 
 def _overview() -> dict:

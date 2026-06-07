@@ -38,8 +38,7 @@ confidence: high
   Phase 2 ██ 技能体系       Track B ██ 个人助手      Git 同步
   Phase 3 ██ 记忆系统       Track C ░░ 图表自动化     健康监控
   Phase 4 ██ 评估反馈
-  Phase 4 ░░ 评估反馈
-  Phase 5 ░░ 自进化
+  Phase 5 ░░ 自进化闭环
 
   ██ = 已完成    ░░ = 待开始    ▓▓ = 进行中
 ```

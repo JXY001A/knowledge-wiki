@@ -18,6 +18,9 @@ def dashboard_data() -> dict:
         "gaps": _gaps(),
         "reminders": _reminders(),
         "overview": _overview(),
+        "skills": _skills(),
+        "wiki_pages": _wiki_page_list(),
+        "query_log": _query_log(),
     }
 
 
@@ -158,3 +161,114 @@ def _reminders() -> list:
         reminders.append({"content": rem.content, "trigger": rem.trigger_at[:16]})
     conn.close()
     return reminders
+
+
+def _skills() -> list:
+    """已注册 Skill 列表及统计."""
+    from knowledge_wiki.skill.registry import list_skills
+    from knowledge_wiki.memory.db import get_db as memdb, init_schema as mem_init
+    from knowledge_wiki.assistant.db import get_db as adb, init_schema as ainit
+
+    skills = list_skills()
+
+    # Skill 名称到 event_type 的映射
+    type_map = {
+        "query-knowledge": "query",
+        "ingest-article": "ingest",
+        "lint-wiki": "lint",
+        "auto-ingest": "ingest",
+    }
+
+    # 从 memory_events 获取执行次数
+    mconn = memdb()
+    mem_init(mconn)
+    type_counts = {}
+    for r in mconn.execute(
+        "SELECT event_type, COUNT(*) as cnt FROM memory_events GROUP BY event_type"
+    ).fetchall():
+        type_counts[r[0]] = r[1]
+    mconn.close()
+
+    # 从 assistant db 获取待办统计
+    aconn = adb()
+    ainit(aconn)
+    todo_count = aconn.execute("SELECT COUNT(*) FROM todos").fetchone()[0] or 0
+    aconn.close()
+
+    result = []
+    for s in skills:
+        evt = type_map.get(s.name, s.name.replace("-", "_"))
+        count = type_counts.get(evt, 0) if evt in type_counts else 0
+        # todo-manage 从 todos 表统计
+        if s.name == "todo-manage":
+            count = todo_count
+        result.append({
+            "name": s.name,
+            "description": s.description[:50],
+            "tier": s.tier,
+            "model": s.model,
+            "triggers": s.triggers[:5],
+            "count": count,
+        })
+
+    return sorted(result, key=lambda s: -s["count"])
+
+
+def _wiki_page_list() -> list:
+    """知识库页面列表（按目录分组）."""
+    from knowledge_wiki.wiki.search import list_wiki_pages
+
+    pages = list_wiki_pages()
+    by_dir = {}
+    for p in pages:
+        path = p["path"]
+        parts = path.split("/")
+        if len(parts) >= 3:
+            directory = parts[1]  # wiki/<directory>/page.md
+        else:
+            directory = "根目录"
+        if directory not in by_dir:
+            by_dir[directory] = []
+        by_dir[directory].append({
+            "title": p["title"],
+            "type": p["type"],
+            "tags": p["tags"][:5],
+            "updated": p["updated"][:10] if p["updated"] else "",
+            "confidence": p.get("confidence", ""),
+        })
+
+    # 按目录分组返回
+    result = []
+    for d in sorted(by_dir.keys()):
+        result.append({
+            "directory": d,
+            "count": len(by_dir[d]),
+            "pages": sorted(by_dir[d], key=lambda p: p["title"]),
+        })
+    return result
+
+
+def _query_log() -> list:
+    """每日询问日志（最近 50 条 query/eval 记录）."""
+    from knowledge_wiki.memory.db import get_db as memdb, init_schema as mem_init
+
+    conn = memdb()
+    mem_init(conn)
+    rows = conn.execute(
+        "SELECT * FROM memory_events WHERE event_type IN ('query', 'eval') "
+        "ORDER BY created_at DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+
+    icons = {"query": "🔍", "eval": "📊", "ingest": "📥", "lint": "🔬"}
+    log = []
+    for r in rows:
+        log.append({
+            "type": r["event_type"],
+            "icon": icons.get(r["event_type"], "•"),
+            "summary": r["summary"][:80],
+            "score": r["score"],
+            "created": r["created_at"][:16] if r["created_at"] else "",
+        })
+
+    return log

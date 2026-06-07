@@ -39,10 +39,10 @@ def execute(context: dict) -> str:
         return _delete(parsed.get("title", text), user_id, send_md)
 
     else:  # create
-        return _create(parsed, user_id, send_md)
+        return _create(parsed, text, user_id, send_md)
 
 
-def _create(parsed: dict, user_id: str, send_md) -> str:
+def _create(parsed: dict, raw_text: str, user_id: str, send_md) -> str:
     """LLM 解析结果 → 创建待办."""
     from knowledge_wiki.assistant.db import get_db, init_schema
     from knowledge_wiki.assistant.models import Todo
@@ -76,7 +76,7 @@ def _create(parsed: dict, user_id: str, send_md) -> str:
         msg += f"\n标签：{', '.join(tags)}"
 
     # 从原文提取具体时间（LLM 只给日期，时间需要额外解析）
-    trigger_time = _extract_time_from_text(text, deadline)
+    trigger_time = _extract_time_from_text(raw_text, deadline)
 
     # 如果有截止日期或时间，自动创建提醒
     if deadline or trigger_time:
@@ -209,3 +209,41 @@ def _delete(keyword: str, user_id: str, send_md) -> str:
     if send_md:
         send_md(user_id, msg)
     return msg
+
+
+def _extract_time_from_text(text: str, deadline: str | None) -> str | None:
+    """从自然语言中提取具体时间，结合 deadline 生成 ISO 时间戳."""
+    import re
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    hour = None
+    minute = 0
+
+    m = re.search(r"(上午|下午|晚上|中午)?(\d{1,2})[点:：](\d{0,2})?", text)
+    if m:
+        period = m.group(1) or ""
+        hour = int(m.group(2))
+        minute = int(m.group(3)) if m.group(3) else 0
+        if "下午" in period and hour < 12:
+            hour += 12
+        elif "晚上" in period and hour < 12:
+            hour += 12
+        elif period == "上午" and hour == 12:
+            hour = 0
+        elif "中午" in period and hour < 12:
+            hour += 12
+
+    if hour is None:
+        return None
+    if hour > 23: hour = 23
+    if minute > 59: minute = 59
+
+    date_str = deadline if deadline else now.strftime("%Y-%m-%d")
+    try:
+        target_dt = datetime.fromisoformat(f"{date_str}T{hour:02d}:{minute:02d}:00")
+        if target_dt <= now:
+            target_dt += timedelta(days=1)
+        return target_dt.isoformat()
+    except (ValueError, TypeError):
+        return f"{date_str}T{hour:02d}:{minute:02d}:00"

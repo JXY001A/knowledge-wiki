@@ -141,9 +141,9 @@ fetch('/admin/data').then(r=>r.json()).then(d=>{
   const ov=d.overview||{}, skills=d.skills||[];
   document.getElementById('liveStats').innerHTML=
     `<div class="stat-item"><div class="num">${ov.wiki_pages||'—'}</div><div class="label">Wiki 页面</div></div>`+
-    `<div class="stat-item"><div class="num">⭐ ${ov.eval_avg||'—'}</div><div class="label">评估均分</div></div>`+
-    `<div class="stat-item"><div class="num">${skills.length||'—'}</div><div class="label">已注册 Skills</div></div>`+
-    `<div class="stat-item"><div class="num">${ov.memories||'—'}</div><div class="label">总交互次数</div></div>`;
+    `<div class="stat-item"><div class="num">⭐ ${ov.eval_avg||'—'}</div><div class="label">回答均分</div></div>`+
+    `<div class="stat-item"><div class="num">${skills.length||'—'}</div><div class="label">Skills</div></div>`+
+    `<div class="stat-item"><div class="num">${ov.memories||'—'}</div><div class="label">操作记忆</div></div>`;
 }).catch(()=>{});
 </script>
 </body>

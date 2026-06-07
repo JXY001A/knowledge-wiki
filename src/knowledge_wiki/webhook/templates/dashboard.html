@@ -18,7 +18,8 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .tab:hover{background:var(--bg);color:var(--text)}
 .tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;padding:20px 24px}
-.stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;text-align:center}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;text-align:center;cursor:pointer;transition:all .15s}
+.stat:hover{border-color:var(--brand);box-shadow:0 2px 8px rgba(59,130,246,.1);transform:translateY(-1px)}
 .stat .value{font-size:28px;font-weight:700;color:var(--brand)}
 .stat .label{font-size:12px;color:var(--sub);margin-top:4px}
 .stat .sub{font-size:11px;color:#94a3b8;margin-top:2px}
@@ -105,10 +106,10 @@ function renderOverview(){
   const ov=data.overview;
   const done=ov.todos_total-ov.todos_pending;
   document.getElementById('overview').innerHTML=
-    `<div class="stat"><div class="value">${ov.wiki_pages}</div><div class="label">Wiki 页面</div><div class="sub">${ov.concepts} 个概念页</div></div>`+
-    `<div class="stat"><div class="value">⭐ ${ov.eval_avg}</div><div class="label">回答均分</div><div class="sub">共 ${ov.eval_count} 次评估</div></div>`+
-    `<div class="stat"><div class="value">${ov.memories}</div><div class="label">操作记忆</div><div class="sub">条记录</div></div>`+
-    `<div class="stat"><div class="value">${done}/${ov.todos_total}</div><div class="label">待办完成</div><div class="sub">剩余 ${ov.todos_pending} 项</div></div>`;
+    `<div class="stat" onclick="switchTab('wiki')" title="点击查看知识库详情"><div class="value">${ov.wiki_pages}</div><div class="label">Wiki 页面</div><div class="sub">${ov.concepts} 个概念页</div></div>`+
+    `<div class="stat" onclick="document.getElementById('evalChart').scrollIntoView({behavior:'smooth'})" title="点击查看评估趋势"><div class="value">⭐ ${ov.eval_avg}</div><div class="label">回答均分</div><div class="sub">共 ${ov.eval_count} 次评估</div></div>`+
+    `<div class="stat" onclick="switchTab('logs')" title="点击查看操作日志"><div class="value">${ov.memories}</div><div class="label">操作记忆</div><div class="sub">条记录</div></div>`+
+    `<div class="stat" onclick="switchTab('skills')" title="点击查看待办详情"><div class="value">${done}/${ov.todos_total}</div><div class="label">待办完成</div><div class="sub">剩余 ${ov.todos_pending} 项</div></div>`;
 
   chart('evalChart','line',{
     labels:data.eval_trend.map(r=>r.date.slice(5)),
@@ -133,8 +134,8 @@ function renderOverview(){
 function renderSkills(){
   const skills=data.skills||[];
   document.getElementById('skillStats').innerHTML=
-    `<div class="stat"><div class="value">${skills.length}</div><div class="label">总 Skills</div></div>`+
-    `<div class="stat"><div class="value">${skills.reduce((a,s)=>a+(s.count||0),0)}</div><div class="label">总执行次数</div></div>`+
+    `<div class="stat" onclick="document.getElementById('skillList').scrollIntoView({behavior:'smooth'})" title="点击查看 Skill 列表"><div class="value">${skills.length}</div><div class="label">总 Skills</div></div>`+
+    `<div class="stat" onclick="document.getElementById('recentTodos').scrollIntoView({behavior:'smooth'})" title="点击查看待办"><div class="value">${skills.reduce((a,s)=>a+(s.count||0),0)}</div><div class="label">总执行次数</div></div>`+
     `<div class="stat"><div class="value">${skills.filter(s=>s.tier===1).length}</div><div class="label">核心 (T1)</div></div>`;
 
   document.getElementById('skillList').innerHTML=skills.map(s=>
@@ -151,7 +152,7 @@ function renderWiki(){
   const pages=data.wiki_pages||[];
   const total=pages.reduce((a,d)=>a+d.count,0);
   document.getElementById('wikiStats').innerHTML=
-    `<div class="stat"><div class="value">${total}</div><div class="label">总页面</div></div>`+
+    `<div class="stat" onclick="document.getElementById('wikiDirs').scrollIntoView({behavior:'smooth'})" title="点击浏览知识库"><div class="value">${total}</div><div class="label">总页面</div></div>`+
     `<div class="stat"><div class="value">${pages.length}</div><div class="label">目录数</div></div>`;
 
   document.getElementById('wikiDirs').innerHTML=pages.map(d=>

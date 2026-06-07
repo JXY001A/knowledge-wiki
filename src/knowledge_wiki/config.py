@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     mcp_port: int = 9300
 
     # Webhook
-    webhook_host: str = "127.0.0.1"
+    webhook_host: str = "0.0.0.0"
     webhook_port: int = 9400
 
     # Ollama

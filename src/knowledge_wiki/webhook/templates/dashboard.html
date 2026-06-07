@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 自进化知识系统 — 管理后台</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+.header{background:#1e293b;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155}
+.header h1{font-size:18px;color:#38bdf8}
+.header .time{font-size:12px;color:#94a3b8}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;padding:16px}
+.card{background:#1e293b;border-radius:12px;padding:16px;border:1px solid #334155}
+.card h3{font-size:13px;color:#94a3b8;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
+.card canvas{max-height:220px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;padding:16px}
+.stat{background:#1e293b;border-radius:12px;padding:16px;text-align:center;border:1px solid #334155}
+.stat .value{font-size:28px;font-weight:700;color:#38bdf8}
+.stat .label{font-size:11px;color:#94a3b8;margin-top:4px}
+.stat .sub{font-size:11px;color:#64748b;margin-top:2px}
+.gap-list,.todo-list,.reminder-list{list-style:none}
+.gap-list li,.todo-list li,.reminder-list li{padding:6px 0;border-bottom:1px solid #1e293b;font-size:13px;display:flex;justify-content:space-between}
+.gap-list .count{background:#334155;padding:2px 8px;border-radius:10px;font-size:11px}
+.todo-pending{color:#fbbf24}.todo-done{color:#4ade80}.todo-cancelled{color:#94a3b8}
+.reminder-time{color:#38bdf8;font-family:monospace}
+.bar{display:inline-block;height:4px;border-radius:2px;background:#38bdf8}
+.refresh{font-size:11px;color:#64748b;text-align:center;padding:8px}
+.wide{grid-column:span 2}
+@media(max-width:640px){.wide{grid-column:span 1}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🧠 AI 自进化知识系统</h1>
+  <span class="time" id="clock"></span>
+</div>
+
+<div class="stats" id="overview"></div>
+
+<div class="grid">
+  <div class="card wide"><h3>📊 评估趋势（近 30 天）</h3><canvas id="evalChart"></canvas></div>
+  <div class="card"><h3>📈 知识增长</h3><canvas id="growthChart"></canvas></div>
+  <div class="card"><h3>🧠 记忆类型分布</h3><canvas id="memoryChart"></canvas></div>
+  <div class="card"><h3>✅ 待办概览</h3><canvas id="todoChart"></canvas></div>
+  <div class="card"><h3>🔍 知识缺口 Top 10</h3><ul class="gap-list" id="gaps"></ul></div>
+  <div class="card"><h3>⏰ 活跃提醒</h3><ul class="reminder-list" id="reminders"></ul></div>
+  <div class="card"><h3>📋 最近待办</h3><ul class="todo-list" id="recentTodos"></ul></div>
+</div>
+
+<div class="refresh">数据每 60 秒自动刷新 | 最后更新: <span id="lastUpdate"></span></div>
+
+<script>
+const colors = ['#38bdf8','#4ade80','#fbbf24','#f87171','#a78bfa','#fb923c','#2dd4bf','#e879f9'];
+let charts = {};
+
+async function load() {
+  const resp = await fetch('/admin/data');
+  const d = await resp.json();
+
+  // Overview
+  const ov = d.overview;
+  document.getElementById('overview').innerHTML = `
+    <div class="stat"><div class="value">${ov.wiki_pages}</div><div class="label">Wiki 页面</div><div class="sub">${ov.concepts} 概念</div></div>
+    <div class="stat"><div class="value">⭐ ${ov.eval_avg}</div><div class="label">评估均分</div><div class="sub">${ov.eval_count} 次</div></div>
+    <div class="stat"><div class="value">${ov.memories}</div><div class="label">记忆记录</div></div>
+    <div class="stat"><div class="value">${ov.todos_pending}/${ov.todos_total}</div><div class="label">待办（未完成/总数）</div></div>
+  `;
+
+  // Eval trend
+  chart('evalChart', 'line', {
+    labels: d.eval_trend.map(r=>r.date),
+    datasets:[{label:'均分',data:d.eval_trend.map(r=>r.avg),borderColor:'#38bdf8',tension:.3,fill:false},
+              {label:'次数',data:d.eval_trend.map(r=>r.count),borderColor:'#4ade80',tension:.3,fill:false,yAxisID:'y1'}]
+  }, {scales:{y:{min:0,max:5,ticks:{stepSize:1}},y1:{position:'right',grid:{display:false},min:0}}});
+
+  // Wiki growth
+  const growth = d.wiki_growth;
+  chart('growthChart', 'line', {
+    labels: growth.map(r=>r.date.slice(5)),
+    datasets:[{label:'Wiki 页面数',data:growth.map(r=>r.pages),borderColor:'#4ade80',fill:true,backgroundColor:'rgba(74,222,128,0.1)',tension:.3}]
+  });
+
+  // Memory distribution
+  const mem = d.memory_dist;
+  chart('memoryChart', 'doughnut', {
+    labels: mem.labels,
+    datasets:[{data:mem.counts,backgroundColor:colors}]
+  });
+
+  // Todo chart
+  const td = d.todos;
+  chart('todoChart', 'doughnut', {
+    labels: ['未完成','已完成','已取消'],
+    datasets:[{data:[td.pending,td.done,td.cancelled],backgroundColor:['#fbbf24','#4ade80','#94a3b8']}]
+  });
+
+  // Gaps
+  document.getElementById('gaps').innerHTML = d.gaps.map(g =>
+    `<li><span>${g.topic}</span><span class="count">${g.count}次</span></li>`
+  ).join('') || '<li>暂无缺口数据</li>';
+
+  // Reminders
+  document.getElementById('reminders').innerHTML = d.reminders.map(r =>
+    `<li><span>${r.content}</span><span class="reminder-time">${r.trigger||''}</span></li>`
+  ).join('') || '<li>暂无活跃提醒</li>';
+
+  // Recent todos
+  document.getElementById('recentTodos').innerHTML = d.todos.recent.map(t =>
+    `<li><span class="todo-${t.status}">${t.status==='done'?'✅':'⏳'} ${t.title}</span><span>${t.deadline||''}</span></li>`
+  ).join('') || '<li>暂无待办</li>';
+
+  document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+}
+
+function chart(id, type, data, extra={}) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), {type,data,options:{...extra,responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94a3b8',font:{size:11}}}}}});
+}
+
+function clock() { document.getElementById('clock').textContent = new Date().toLocaleString('zh-CN'); }
+
+load(); clock();
+setInterval(load, 60000);
+setInterval(clock, 1000);
+</script>
+</body>
+</html>

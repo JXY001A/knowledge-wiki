@@ -84,4 +84,18 @@ def create_app() -> Flask:
             "inbox_exists": RAW_INBOX.exists(),
         })
 
+    # 管理后台
+    @app.route("/admin", methods=["GET"])
+    def admin_dashboard():
+        """管理后台仪表盘."""
+        from pathlib import Path
+        html_path = Path(__file__).parent / "templates" / "dashboard.html"
+        return html_path.read_text(encoding="utf-8")
+
+    @app.route("/admin/data", methods=["GET"])
+    def admin_data():
+        """仪表盘 JSON 数据."""
+        from knowledge_wiki.webhook.admin import dashboard_data
+        return jsonify(dashboard_data())
+
     return app

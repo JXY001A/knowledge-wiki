@@ -172,19 +172,26 @@ def classify_intent_llm(text: str) -> str | None:
 def classify_todo_action(text: str) -> dict:
     """用 LLM 解析待办操作：创建/完成/删除/列表，提取结构化字段."""
     import re
+    from datetime import datetime, timedelta
 
-    prompt = """你是待办解析器。分析用户输入，输出 JSON。
+    today = datetime.now().strftime("%Y-%m-%d")
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
 
-格式：{"action":"create|complete|delete|list","title":"标题(≤20字)","priority":"high|medium|low","deadline":"YYYY-MM-DD或null","tags":["标签"]}
+    prompt = f"""分析用户输入，输出JSON。今天={today}，明天={tomorrow}。
 
 规则：
-- action: "完成/做了/搞定/done"→complete, "取消/删除"→delete, "列出/查看/有哪些/list"→list, 其他→create
-- title: 核心待办事项，去掉时间/优先级/标签修饰词
-- priority: "紧急/重要/高优先/high"→high, "不急/低优先/low"→low, 默认→medium
-- deadline: 今天=2026-06-07, 明天=2026-06-08, 后天=2026-06-09, 下周一=下周一日期
-- tags: 从 #标签 或关键词提取
+1. action: 含"完成/做了/搞定"→"complete", "取消/删除"→"delete", "列出/查看/有哪些"→"list", 其他→"create"
+2. title: 核心待办标题(≤20字)，去掉时间/优先级/标签等修饰词
+3. priority: 含"紧急/重要/高优先"→"high", "不急/低优先"→"low", 默认→"medium"
+4. deadline: 今天={today}, 明天={tomorrow}, 无明确日期→null
+5. tags: 从#标签提取的数组，无→[]
 
-只输出JSON。"""
+示例:
+输入:"提交Q2报告 高优先级 明天"→{{"action":"create","title":"提交Q2报告","priority":"high","deadline":"{tomorrow}","tags":[]}}
+输入:"代码review做完了"→{{"action":"complete","title":"代码review","priority":"medium","deadline":null,"tags":[]}}
+输入:"待办列表"→{{"action":"list","title":"","priority":"medium","deadline":null,"tags":[]}}
+
+只输出JSON:"""
 
     try:
         body = json.dumps({

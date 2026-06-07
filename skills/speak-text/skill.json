@@ -1,0 +1,10 @@
+{
+  "name": "speak-text",
+  "version": "1.0",
+  "description": "通过 USB 音响朗读文字：TTS 语音合成 → 扬声器播放",
+  "tier": 2,
+  "model": "local",
+  "tools": [],
+  "triggers": ["说", "speak", "说话", "喊", "播放", "朗读"],
+  "dependencies": []
+}

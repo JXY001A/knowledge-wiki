@@ -75,6 +75,41 @@ def _create(parsed: dict, user_id: str, send_md) -> str:
     if tags:
         msg += f"\n标签：{', '.join(tags)}"
 
+    # 从原文提取具体时间（LLM 只给日期，时间需要额外解析）
+    trigger_time = _extract_time_from_text(text, deadline)
+
+    # 如果有截止日期或时间，自动创建提醒
+    if deadline or trigger_time:
+        try:
+            from datetime import datetime
+            from knowledge_wiki.assistant.db import get_db as _gdb, init_schema as _init
+            from knowledge_wiki.assistant.models import Reminder
+            from knowledge_wiki.assistant.scheduler import add_reminder_job
+
+            # 确定提醒时间
+            if trigger_time:
+                reminder_dt = trigger_time
+            elif deadline:
+                reminder_dt = f"{deadline}T09:00"
+            else:
+                reminder_dt = None
+
+            if reminder_dt:
+                c2 = _gdb()
+                _init(c2)
+                r = Reminder(content=title, trigger_at=reminder_dt, user_id=user_id)
+                rd = r.to_dict()
+                cols2 = ", ".join(rd.keys())
+                ph2 = ", ".join("?" for _ in rd)
+                c2.execute(f"INSERT INTO reminders ({cols2}) VALUES ({ph2})", list(rd.values()))
+                c2.commit()
+                c2.close()
+
+                add_reminder_job(r.id, title, reminder_dt, user_id=user_id)
+                msg += f"\n⏰ 将在 {reminder_dt[:16]} 提醒"
+        except Exception:
+            pass  # 调度器未启动
+
     if send_md:
         send_md(user_id, msg[:3000])
     return msg

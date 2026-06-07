@@ -97,8 +97,18 @@ def _create_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
 
-    # 恢复持久化 Job
+    # 每分钟同步数据库提醒到 scheduler（webhook 独立进程无法直接注册 job）
+    scheduler.add_job(
+        _job_sync_reminders,
+        CronTrigger(minute="*"),
+        id="system:sync-reminders",
+        name="同步数据库提醒",
+        replace_existing=True,
+    )
+
+    # 恢复持久化 Job + 扫描数据库补注册
     _restore_jobs(scheduler)
+    _recover_from_db(scheduler)
 
     return scheduler
 
@@ -243,6 +253,46 @@ def _job_git_retry():
         _log.warning("[scheduler] git 重试失败: %s", e)
 
 
+def _job_sync_reminders():
+    """每分钟从数据库同步新提醒到 scheduler."""
+    try:
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        from knowledge_wiki.assistant.models import Reminder
+        from datetime import datetime, timezone
+
+        conn = get_db()
+        init_schema(conn)
+        rows = conn.execute(
+            "SELECT * FROM reminders WHERE status='active' AND trigger_at > ?",
+            [datetime.now(timezone.utc).isoformat()],
+        ).fetchall()
+        conn.close()
+
+        added = 0
+        for r in rows:
+            rem = Reminder.from_row(r)
+            job_id = f"remind:{rem.id}"
+            if get_scheduler().get_job(job_id):
+                continue
+            try:
+                get_scheduler().add_job(
+                    _job_fire_reminder,
+                    DateTrigger(run_date=rem.trigger_at, timezone="Asia/Shanghai"),
+                    id=job_id,
+                    name=rem.content[:60],
+                    kwargs={"reminder_id": rem.id, "content": rem.content, "user_id": rem.user_id},
+                    replace_existing=True,
+                )
+                added += 1
+            except Exception as e:
+                _log.warning("sync 提醒 %s 失败: %s", rem.id, e)
+
+        if added > 0:
+            _log.info("同步 %d 个新提醒", added)
+    except Exception as e:
+        _log.warning("sync 提醒失败: %s", e)
+
+
 def _job_deadline_scan():
     """待办到期扫描."""
     try:
@@ -308,6 +358,47 @@ def _save_jobs(scheduler: BackgroundScheduler) -> None:
         JOBS_FILE.write_text(json.dumps(jobs_data, ensure_ascii=False, indent=2))
     except Exception as e:
         _log.warning("保存 jobs 失败: %s", e)
+
+
+def _recover_from_db(scheduler: BackgroundScheduler) -> None:
+    """启动时从数据库恢复所有活跃提醒（JSON 文件丢失时的保障）."""
+    try:
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        from knowledge_wiki.assistant.models import Reminder
+        from datetime import datetime, timezone
+
+        conn = get_db()
+        init_schema(conn)
+        rows = conn.execute(
+            "SELECT * FROM reminders WHERE status='active' AND trigger_at > ?",
+            [datetime.now(timezone.utc).isoformat()],
+        ).fetchall()
+        conn.close()
+
+        restored = 0
+        for r in rows:
+            rem = Reminder.from_row(r)
+            job_id = f"remind:{rem.id}"
+            if scheduler.get_job(job_id):
+                continue  # 已存在
+
+            try:
+                scheduler.add_job(
+                    _job_fire_reminder,
+                    DateTrigger(run_date=rem.trigger_at, timezone="Asia/Shanghai"),
+                    id=job_id,
+                    name=rem.content[:60],
+                    kwargs={"reminder_id": rem.id, "content": rem.content, "user_id": rem.user_id},
+                    replace_existing=True,
+                )
+                restored += 1
+            except Exception as e:
+                _log.warning("恢复提醒 %s 失败: %s", rem.id, e)
+
+        if restored > 0:
+            _log.info("从数据库恢复 %d 个提醒", restored)
+    except Exception as e:
+        _log.warning("从数据库恢复失败: %s", e)
 
 
 def _restore_jobs(scheduler: BackgroundScheduler) -> None:

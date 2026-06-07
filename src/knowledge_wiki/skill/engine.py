@@ -119,6 +119,8 @@ _STRONG_SIGNALS = [
     (["打卡", "习惯打卡"], "habit-track"),
     (["闹钟", "到点提醒我", "到时间叫我", "叫我起床"], "remind-set"),
     (["健康检查", "巡检", "知识库检查"], "lint-wiki"),
+    (["说 ", "喊 ", "播放 ", "朗读 "], "speak-text"),
+    (["speak ", "play "], "speak-text"),
 ]
 
 

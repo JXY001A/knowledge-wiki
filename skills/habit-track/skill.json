@@ -1,0 +1,1 @@
+{"name":"habit-track","version":"1.0","description":"习惯打卡追踪：记录每日习惯完成情况","tier":3,"model":"local","tools":["habit_create","habit_log","habit_stats"],"triggers":["打卡","习惯","habit","做了","喝水","跑步","运动","阅读"],"dependencies":[]}

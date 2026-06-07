@@ -313,6 +313,131 @@ def create_server() -> FastMCP:
     mcp.tool()(remind_list)
     mcp.tool()(schedule_today)
 
+    # 注册 Track B 助理工具 — Bookmark
+    from knowledge_wiki.assistant.models import Bookmark as BkModel
+
+    async def bookmark_add(url: str, title: str = "", tags: str = "") -> str:
+        """保存书签."""
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+        conn = assist_db()
+        init_assist(conn)
+        existing = conn.execute("SELECT id FROM bookmarks WHERE url=?", [url]).fetchone()
+        if existing:
+            conn.close()
+            return f"书签已存在：{url[:80]}"
+        b = BkModel(url=url, title=title[:80] if title else url[:80], tags=tag_list)
+        d = b.to_dict()
+        conn.execute(
+            f"INSERT INTO bookmarks ({', '.join(d.keys())}) VALUES ({', '.join('?' for _ in d)})",
+            list(d.values()),
+        )
+        conn.commit()
+        conn.close()
+        return f"📎 已保存书签：{title or url[:60]}"
+
+    async def bookmark_list(read_status: str = "unread", limit: int = 20) -> str:
+        """列出书签."""
+        conn = assist_db()
+        init_assist(conn)
+        rows = conn.execute(
+            "SELECT * FROM bookmarks WHERE read_status=? ORDER BY created_at DESC LIMIT ?",
+            [read_status, limit],
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return "暂无书签。"
+        bks = [BkModel.from_row(r) for r in rows]
+        lines = [f"## 书签（{len(bks)}）\n"]
+        for i, b in enumerate(bks, 1):
+            lines.append(f"{i}. [{b.title}]({b.url})")
+        return "\n".join(lines)
+
+    # 注册 Track B 助理工具 — Habit
+    from knowledge_wiki.assistant.models import Habit as HabModel, HabitLog
+
+    async def habit_create(name: str, unit: str = "boolean", target: float = 1.0) -> str:
+        """创建习惯."""
+        conn = assist_db()
+        init_assist(conn)
+        h = HabModel(name=name[:20], unit=unit, target=target)
+        d = h.to_dict()
+        conn.execute(
+            f"INSERT INTO habits ({', '.join(d.keys())}) VALUES ({', '.join('?' for _ in d)})",
+            list(d.values()),
+        )
+        conn.commit()
+        conn.close()
+        return f"✅ 已创建习惯：{name}"
+
+    async def habit_log(habit_name: str, value: float = 1.0, date: str = "") -> str:
+        """习惯打卡."""
+        from datetime import datetime
+        d = date or datetime.now().strftime("%Y-%m-%d")
+        conn = assist_db()
+        init_assist(conn)
+        row = conn.execute("SELECT id FROM habits WHERE name=? AND archived_at IS NULL", [habit_name]).fetchone()
+        if not row:
+            conn.close()
+            return f"习惯「{habit_name}」不存在。先用 habit_create 创建。"
+        try:
+            hl = HabitLog(habit_id=row["id"], date=d, value=value)
+            ld = hl.to_dict()
+            conn.execute(
+                f"INSERT INTO habit_logs ({', '.join(ld.keys())}) VALUES ({', '.join('?' for _ in ld)})",
+                list(ld.values()),
+            )
+            conn.commit()
+            conn.close()
+            return f"✅ {habit_name} 打卡成功！"
+        except Exception:
+            conn.close()
+            return f"今日已打卡：{habit_name}"
+
+    async def habit_stats(habit_name: str = "") -> str:
+        """查看习惯统计."""
+        conn = assist_db()
+        init_assist(conn)
+        rows = conn.execute(
+            "SELECT h.name, COUNT(hl.id) as cnt, MAX(hl.date) as last_date "
+            "FROM habits h LEFT JOIN habit_logs hl ON h.id=hl.habit_id "
+            "WHERE h.archived_at IS NULL GROUP BY h.id"
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return "暂无习惯记录。"
+        lines = ["## 习惯统计\n"]
+        for r in rows:
+            lines.append(f"- {r['name']}: {r['cnt']} 次 | 最后: {r['last_date'] or '无'}")
+        return "\n".join(lines)
+
+    async def daily_brief() -> str:
+        """生成今日简报."""
+        from datetime import datetime, timedelta
+        today = datetime.now().date().isoformat()
+        conn = assist_db()
+        init_assist(conn)
+        pending = conn.execute("SELECT COUNT(*) FROM todos WHERE status='pending'").fetchone()[0]
+        reminders = conn.execute(
+            "SELECT COUNT(*) FROM reminders WHERE status='active' AND trigger_at >= ?", [today]
+        ).fetchone()[0]
+        notes = conn.execute("SELECT COUNT(*) FROM notes WHERE created_at >= ?", [today]).fetchone()[0]
+        conn.close()
+
+        lines = [
+            f"## 📋 {datetime.now().strftime('%m月%d日')} 简报\n",
+            f"📌 待办：{pending} 项",
+            f"⏰ 提醒：{reminders} 个",
+            f"📝 笔记：{notes} 条",
+        ]
+        return "\n".join(lines)
+
+    mcp.tool()(bookmark_add)
+    mcp.tool()(bookmark_list)
+    mcp.tool()(habit_create)
+    mcp.tool()(habit_log)
+    mcp.tool()(habit_stats)
+    mcp.tool()(daily_brief)
+
     # 注册 Phase 2 技能工具
     from knowledge_wiki.skill.registry import get_skills_summary
     from knowledge_wiki.skill.planner import execute_skill

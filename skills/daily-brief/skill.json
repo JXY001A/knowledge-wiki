@@ -1,0 +1,1 @@
+{"name":"daily-brief","version":"1.0","description":"生成每日早报/晚报：今日待办+提醒+知识库动态","tier":2,"model":"local","tools":["daily_brief"],"triggers":["日报","早报","晚报","今天有什么","简报","总结"],"dependencies":[]}

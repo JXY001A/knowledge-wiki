@@ -1,0 +1,1 @@
+{"name":"bookmark-save","version":"1.0","description":"保存书签（URL），自动提取标题和标签","tier":2,"model":"local","tools":["bookmark_add","bookmark_list"],"triggers":["书签","收藏","稍后读","bookmark","标记"],"dependencies":[]}

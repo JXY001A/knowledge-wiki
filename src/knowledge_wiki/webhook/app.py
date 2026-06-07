@@ -125,6 +125,83 @@ def create_app() -> Flask:
         html_path = Path(__file__).parent / "templates" / "chat.html"
         return html_path.read_text(encoding="utf-8")
 
+    # 会话持久化 API
+    @app.route("/chat/convs", methods=["GET"])
+    def list_convs():
+        """获取历史会话列表."""
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        conn = get_db()
+        init_schema(conn)
+        rows = conn.execute(
+            "SELECT id, title, updated_at FROM conversations "
+            "WHERE user_id='web_user' ORDER BY updated_at DESC LIMIT 50"
+        ).fetchall()
+        conn.close()
+        return jsonify([{"id": r["id"], "title": r["title"], "updated_at": r["updated_at"]} for r in rows])
+
+    @app.route("/chat/convs", methods=["POST"])
+    def create_conv():
+        """创建或更新会话."""
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        from knowledge_wiki.memory.models import uuid7, now_iso
+        data = request.get_json()
+        conv_id = data.get("id") or uuid7()
+        title = data.get("title", "新对话")[:50]
+        messages = data.get("messages", [])
+
+        conn = get_db()
+        init_schema(conn)
+
+        # Upsert conversation
+        existing = conn.execute("SELECT id FROM conversations WHERE id=?", [conv_id]).fetchone()
+        if existing:
+            conn.execute("UPDATE conversations SET title=?, updated_at=? WHERE id=?", [title, now_iso(), conv_id])
+        else:
+            conn.execute("INSERT INTO conversations (id,title,user_id,created_at,updated_at) VALUES (?,?,?,?,?)",
+                         [conv_id, title, "web_user", now_iso(), now_iso()])
+
+        # Replace messages
+        conn.execute("DELETE FROM conversation_messages WHERE conv_id=?", [conv_id])
+        for m in messages:
+            mid = uuid7()
+            conn.execute("INSERT INTO conversation_messages (id,conv_id,role,content,created_at) VALUES (?,?,?,?,?)",
+                         [mid, conv_id, m["role"], m["content"], m.get("time", now_iso())])
+
+        conn.commit()
+        conn.close()
+        return jsonify({"id": conv_id, "ok": True})
+
+    @app.route("/chat/convs/<conv_id>", methods=["GET"])
+    def get_conv(conv_id):
+        """获取单个会话的所有消息."""
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        conn = get_db()
+        init_schema(conn)
+        conv = conn.execute("SELECT * FROM conversations WHERE id=?", [conv_id]).fetchone()
+        if not conv:
+            conn.close()
+            return jsonify({"error": "not found"}), 404
+        msgs = conn.execute(
+            "SELECT role, content, created_at FROM conversation_messages WHERE conv_id=? ORDER BY created_at",
+            [conv_id]
+        ).fetchall()
+        conn.close()
+        return jsonify({
+            "id": conv["id"], "title": conv["title"],
+            "messages": [{"role": m["role"], "text": m["content"], "time": m["created_at"]} for m in msgs],
+        })
+
+    @app.route("/chat/convs/<conv_id>", methods=["DELETE"])
+    def delete_conv(conv_id):
+        """删除会话."""
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        conn = get_db()
+        init_schema(conn)
+        conn.execute("DELETE FROM conversations WHERE id=?", [conv_id])
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True})
+
     # 管理后台
     @app.route("/admin", methods=["GET"])
     def admin_dashboard():

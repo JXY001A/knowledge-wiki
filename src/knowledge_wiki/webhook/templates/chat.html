@@ -121,51 +121,58 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 </div>
 
 <script>
-const STORE_KEY='kw_chat_convs';
-let convs=JSON.parse(localStorage.getItem(STORE_KEY)||'[]');
-let activeConv=null;
-let welcomeShown=true;
+let convs=[],activeConv=null,welcomeShown=true;
 
-function saveConvs(){localStorage.setItem(STORE_KEY,JSON.stringify(convs));renderConvs()}
-
-function newChat(){
-  activeConv=null;welcomeShown=true;
-  document.getElementById('chat').innerHTML=`<div class="welcome" id="welcome"><h2>有什么可以帮你的？</h2><p>知识查询、待办管理、定时提醒、笔记记录</p><div class="quick-actions">${document.querySelector('.quick-actions')?document.querySelector('.quick-actions').innerHTML:''}</div></div>`;
-  document.getElementById('convTitle').textContent='新对话';
+async function loadConvs(){
+  try{const r=await fetch('/chat/convs');convs=await r.json()}catch(e){convs=[]}
   renderConvs();
 }
 
 function renderConvs(){
   const el=document.getElementById('convList');
-  if(!convs.length){el.innerHTML='<div class="empty-sidebar">暂无历史对话<br><span style="font-size:10px">发送消息后自动保存</span></div>';return}
-  el.innerHTML=convs.map((c,i)=>`<div class="conv-item${activeConv===i?' active':''}" onclick="loadConv(${i})"><div class="title">${c.title||'新对话'}</div><div class="preview">${c.messages.length?c.messages[c.messages.length-1].text.slice(0,30):''}</div><div class="time">${c.time||''}</div></div>`).join('');
+  if(!convs.length){el.innerHTML='<div class="empty-sidebar">暂无历史对话</div>';return}
+  el.innerHTML=convs.map(c=>`<div class="conv-item${activeConv&&activeConv.id===c.id?' active':''}" onclick="loadConv('${c.id}')"><div class="title">${c.title||'新对话'}</div><div class="time">${c.updated_at?.slice(0,10)||''}</div></div>`).join('');
 }
 
-function loadConv(i){
-  activeConv=i;welcomeShown=false;
-  const c=convs[i];
-  document.getElementById('convTitle').textContent=c.title||'对话';
-  document.getElementById('chat').innerHTML=c.messages.map(m=>`<div class="msg ${m.role}"><div class="avatar-icon">${m.role==='user'?'J':'🤖'}</div><div><div class="bubble">${m.text.replace(/\n/g,'<br>')}</div><div class="time">${m.time||''}</div></div></div>`).join('');
-  document.getElementById('chat').scrollTop=document.getElementById('chat').scrollHeight;
-  renderConvs();
+async function loadConv(id){
+  welcomeShown=false;
+  try{const r=await fetch('/chat/convs/'+id);const c=await r.json();
+    activeConv={id:c.id,title:c.title,messages:c.messages};
+    document.getElementById('convTitle').textContent=c.title||'对话';
+    document.getElementById('chat').innerHTML=c.messages.map(m=>`<div class="msg ${m.role}"><div class="avatar-icon">${m.role==='user'?'J':'🤖'}</div><div><div class="bubble">${m.text.replace(/\n/g,'<br>')}</div><div class="time">${(m.time||'').slice(11,16)||''}</div></div></div>`).join('');
+    document.getElementById('chat').scrollTop=document.getElementById('chat').scrollHeight;
+    renderConvs();
+  }catch(e){}
 }
 
-function deleteConv(){
-  if(activeConv===null)return;
+async function saveConv(){
+  if(!activeConv||!activeConv.messages.length)return;
+  try{await fetch('/chat/convs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(activeConv)})}catch(e){}
+  loadConvs();
+}
+
+async function deleteConv(){
+  if(!activeConv||!activeConv.id)return;
   if(!confirm('删除当前对话？'))return;
-  convs.splice(activeConv,1);activeConv=null;
-  saveConvs();newChat();
+  try{await fetch('/chat/convs/'+activeConv.id,{method:'DELETE'})}catch(e){}
+  activeConv=null;loadConvs();newChatUI();
 }
+
+function newChatUI(){
+  welcomeShown=true;
+  document.getElementById('chat').innerHTML=`<div class="welcome" id="welcome"><h2>有什么可以帮你的？</h2><p>知识查询、待办管理、定时提醒、笔记记录</p><div class="quick-actions">${document.querySelector('.quick-actions')?document.querySelector('.quick-actions').innerHTML:''}</div></div>`;
+  document.getElementById('convTitle').textContent='新对话';
+}
+
+function newChat(){activeConv=null;newChatUI();renderConvs()}
 
 function addMsg(role,text){
   if(welcomeShown){document.getElementById('chat').innerHTML='';welcomeShown=false}
-  if(activeConv===null){activeConv=convs.length;convs.push({id:Date.now(),title:'',messages:[],time:new Date().toLocaleDateString()})}
+  if(!activeConv){activeConv={id:null,title:'',messages:[]}}
   const time=new Date().toLocaleTimeString();
-  convs[activeConv].messages.push({role,text,time});
-  if(!convs[activeConv].title&&role==='user'){convs[activeConv].title=text.slice(0,20)||'新对话'}
-  convs[activeConv].time=new Date().toLocaleDateString();
-  saveConvs();
-  document.getElementById('convTitle').textContent=convs[activeConv].title||'对话';
+  activeConv.messages.push({role,text,time});
+  if(!activeConv.title&&role==='user'){activeConv.title=text.slice(0,30)||'新对话'}
+  document.getElementById('convTitle').textContent=activeConv.title||'对话';
 
   const div=document.createElement('div');div.className='msg '+role;
   const icon=role==='user'?'J':'🤖';
@@ -181,6 +188,7 @@ async function send(){
     const resp=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
     const data=await resp.json();addMsg('bot',data.reply||'处理完成')
   }catch(e){addMsg('bot','网络错误，请重试')}
+  saveConv();
   input.disabled=false;document.getElementById('sendBtn').disabled=false;input.focus()
 }
 
@@ -190,7 +198,7 @@ function sendHint(t){document.getElementById('input').value=t;send()}
 function toggleMenu(){document.getElementById('dropdown').classList.toggle('show')}
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed')}
 document.addEventListener('click',e=>{if(!document.getElementById('avatarMenu').contains(e.target))document.getElementById('dropdown').classList.remove('show')});
-renderConvs();
+loadConvs();
 </script>
 </body>
 </html>

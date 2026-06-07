@@ -146,9 +146,31 @@ SCHEMA_V2 = """
 ALTER TABLE reminders ADD COLUMN user_id TEXT DEFAULT '';
 """
 
+SCHEMA_V3 = """
+CREATE TABLE IF NOT EXISTS conversations (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL DEFAULT '新对话',
+    user_id     TEXT DEFAULT 'web_user',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+    id          TEXT PRIMARY KEY,
+    conv_id     TEXT NOT NULL,
+    role        TEXT NOT NULL,          -- 'user' | 'bot'
+    content     TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (conv_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_conv_msgs ON conversation_messages(conv_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_convs_user ON conversations(user_id, updated_at DESC);
+"""
+
 MIGRATIONS = [
     (1, SCHEMA_V1, "初始 schema：todos/reminders/notes/bookmarks/habits/habit_logs/push_queue"),
     (2, SCHEMA_V2, "reminders 表添加 user_id 列（主动推送需要）"),
+    (3, SCHEMA_V3, "conversations + conversation_messages 表（Web 聊天历史持久化）"),
 ]
 
 

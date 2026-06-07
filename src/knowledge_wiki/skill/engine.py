@@ -64,21 +64,27 @@ def match_skill(intent: str) -> Skill | None:
     skills = list_skills()
     intent_lower = intent.lower()
 
-    # 触发词匹配 — 最长优先，同长时 Tier 低者优先（核心技能 > 懒加载）
+    # 触发词匹配 — 最长优先 > 同长时靠前优先 > 同位置时低 Tier 优先
     best_skill = None
     best_len = 0
+    best_pos = 9999
     best_tier = 99
     for skill in skills:
         for trigger in skill.triggers:
-            if trigger.lower() in intent_lower:
+            pos = intent_lower.find(trigger.lower())
+            if pos >= 0:
                 better = False
                 if len(trigger) > best_len:
                     better = True
-                elif len(trigger) == best_len and skill.tier < best_tier:
-                    better = True
+                elif len(trigger) == best_len:
+                    if pos < best_pos:
+                        better = True
+                    elif pos == best_pos and skill.tier < best_tier:
+                        better = True
                 if better:
                     best_skill = skill
                     best_len = len(trigger)
+                    best_pos = pos
                     best_tier = skill.tier
 
     if best_skill:

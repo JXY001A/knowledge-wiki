@@ -1,0 +1,10 @@
+{
+  "name": "remind-set",
+  "version": "1.0",
+  "description": "设置定时提醒：指定时间推送通知",
+  "tier": 1,
+  "model": "local",
+  "tools": ["remind_set", "remind_list"],
+  "triggers": ["提醒", "闹钟", "定时", "几点", "叫我", "记得", "别忘"],
+  "dependencies": []
+}

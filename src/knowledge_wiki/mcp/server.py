@@ -232,6 +232,87 @@ def create_server() -> FastMCP:
     mcp.tool()(note_create)
     mcp.tool()(note_search)
 
+    # 注册 Track B 助理工具 — Reminder + Schedule
+    from knowledge_wiki.assistant.models import Reminder
+
+    async def remind_set(content: str, trigger_at: str, repeat_rule: str = "") -> str:
+        """设置定时提醒."""
+        conn = assist_db()
+        init_assist(conn)
+        r = Reminder(content=content[:200], trigger_at=trigger_at, repeat_rule=repeat_rule or None)
+        d = r.to_dict()
+        conn.execute(
+            f"INSERT INTO reminders ({', '.join(d.keys())}) VALUES ({', '.join('?' for _ in d)})",
+            list(d.values()),
+        )
+        conn.commit()
+        conn.close()
+
+        try:
+            from knowledge_wiki.assistant.scheduler import add_reminder_job
+            add_reminder_job(r.id, content, trigger_at)
+        except Exception:
+            pass
+
+        return f"⏰ 已设置提醒：{content} | {trigger_at[:16]}"
+
+    async def remind_list(status: str = "active") -> str:
+        """列出活跃提醒."""
+        conn = assist_db()
+        init_assist(conn)
+        rows = conn.execute(
+            "SELECT * FROM reminders WHERE status=? ORDER BY trigger_at", [status]
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return "暂无提醒。"
+        reminders = [Reminder.from_row(r) for r in rows]
+        lines = [f"## 提醒列表（{len(reminders)} 条）\n"]
+        for r in reminders:
+            lines.append(f"- ⏰ {r.trigger_at[:16]} | {r.content}")
+        return "\n".join(lines)
+
+    async def schedule_today(user_id: str = "") -> str:
+        """查看今日日程（待办 + 提醒）."""
+        from datetime import datetime, timedelta
+        today = datetime.now().date().isoformat()
+        tomorrow = (datetime.now().date() + timedelta(days=1)).isoformat()
+
+        conn = assist_db()
+        init_assist(conn)
+
+        todos = conn.execute(
+            "SELECT * FROM todos WHERE status='pending' ORDER BY "
+            "CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 10"
+        ).fetchall()
+        reminders = conn.execute(
+            "SELECT * FROM reminders WHERE status='active' AND trigger_at BETWEEN ? AND ? ORDER BY trigger_at",
+            [today, tomorrow],
+        ).fetchall()
+        conn.close()
+
+        lines = ["## 今日日程\n"]
+        if todos:
+            lines.append("### 待办")
+            icons = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+            for i, r in enumerate(todos, 1):
+                t = Todo.from_row(r)
+                icon = icons.get(t.priority, "⚪")
+                lines.append(f"{i}. {icon} {t.title}")
+        if reminders:
+            lines.append("\n### 提醒")
+            for r in reminders:
+                rem = Reminder.from_row(r)
+                t = rem.trigger_at[11:16] if len(rem.trigger_at) > 11 else ""
+                lines.append(f"- ⏰ {t} {rem.content}")
+        if not todos and not reminders:
+            lines.append("暂无日程安排。")
+        return "\n".join(lines)
+
+    mcp.tool()(remind_set)
+    mcp.tool()(remind_list)
+    mcp.tool()(schedule_today)
+
     # 注册 Phase 2 技能工具
     from knowledge_wiki.skill.registry import get_skills_summary
     from knowledge_wiki.skill.planner import execute_skill

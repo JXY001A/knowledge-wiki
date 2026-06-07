@@ -1,0 +1,10 @@
+{
+  "name": "schedule-view",
+  "version": "1.0",
+  "description": "查看今日日程、待办和即将到来的提醒",
+  "tier": 2,
+  "model": "local",
+  "tools": ["schedule_today"],
+  "triggers": ["日程", "今天要做什么", "今天有什么", "明天要做什么", "这周", "安排"],
+  "dependencies": []
+}

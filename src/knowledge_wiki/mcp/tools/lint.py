@@ -127,4 +127,20 @@ async def lint_tool() -> str:
     lines.append(f"- 概念页: {sum(1 for p in pages if p['type'] == 'concept')}")
     lines.append(f"- 综合分析: {sum(1 for p in pages if p['type'] == 'synthesis')}")
 
+    # Phase 4: 语义评估
+    try:
+        from knowledge_wiki.eval.scorer import get_eval_stats
+        from knowledge_wiki.memory.reader import get_stats as mem_stats
+        eval_s = get_eval_stats()
+        mem_s = mem_stats()
+        lines.append(f"\n## 质量评估（Phase 4）")
+        if eval_s.get("total", 0) > 0:
+            lines.append(f"- 回答评分: {eval_s['stars']} (均分 {eval_s['avg_score']}/5, {eval_s['total']} 次)")
+        else:
+            lines.append(f"- 回答评分: 暂无（使用 ? 查询后自动评估）")
+        if mem_s.get("total", 0) > 0:
+            lines.append(f"- 记忆记录: {mem_s['total']} 条")
+    except Exception:
+        pass
+
     return "\n".join(lines)

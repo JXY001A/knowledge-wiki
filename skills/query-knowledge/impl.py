@@ -62,4 +62,14 @@ def execute(context: dict) -> str:
     if send_md:
         send_md(user_id, answer[:3000])
 
+    # 4. 异步评估回答质量（不阻塞回复）
+    try:
+        import threading
+        def _eval():
+            from knowledge_wiki.eval.scorer import evaluate_and_record
+            evaluate_and_record(question[:200], answer[:2000], wiki_context[:3000], user_id)
+        threading.Thread(target=_eval, daemon=True).start()
+    except Exception:
+        pass
+
     return ""

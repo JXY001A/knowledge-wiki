@@ -438,6 +438,42 @@ def create_server() -> FastMCP:
     mcp.tool()(habit_stats)
     mcp.tool()(daily_brief)
 
+    # 注册 Phase 4 评估工具
+    from knowledge_wiki.eval.scorer import evaluate_answer, get_eval_stats
+
+    async def eval_last(question: str, answer: str, wiki_context: str = "") -> str:
+        """评估最近一次回答的质量（准确性/完整性/有用性 1-5 分）."""
+        result = evaluate_answer(question, answer, wiki_context)
+        if not result:
+            return "评估失败（API 不可用或未配置）"
+        lines = [
+            f"## 回答评估",
+            f"准确性：{'⭐' * result.accuracy} ({result.accuracy}/5)",
+            f"完整性：{'⭐' * result.completeness} ({result.completeness}/5)",
+            f"有用性：{'⭐' * result.usefulness} ({result.usefulness}/5)",
+            f"综合：{result.stars} ({result.overall}/5)",
+        ]
+        if result.gaps:
+            lines.append(f"\n知识缺口：{', '.join(result.gaps)}")
+        if result.improvement:
+            lines.append(f"\n建议：{result.improvement}")
+        return "\n".join(lines)
+
+    async def eval_stats() -> str:
+        """查看评估统计：平均分、分布."""
+        stats = get_eval_stats()
+        if stats.get("total", 0) == 0:
+            return "暂无评估数据。使用 ? 查询后系统会自动评估。"
+        lines = [
+            f"## 评估统计",
+            f"总评估次数：{stats['total']}",
+            f"平均评分：{stats['stars']} ({stats['avg_score']}/5)",
+        ]
+        return "\n".join(lines)
+
+    mcp.tool()(eval_last)
+    mcp.tool()(eval_stats)
+
     # 注册 Phase 2 技能工具
     from knowledge_wiki.skill.registry import get_skills_summary
     from knowledge_wiki.skill.planner import execute_skill

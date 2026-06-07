@@ -230,11 +230,15 @@ def _wiki_page_list() -> list:
             directory = "根目录"
         if directory not in by_dir:
             by_dir[directory] = []
+        upd = p.get("updated", "")
+        if hasattr(upd, "strftime"):
+            upd = upd.strftime("%Y-%m-%d")
+        upd_str = str(upd)[:10] if upd else ""
         by_dir[directory].append({
             "title": p["title"],
             "type": p["type"],
-            "tags": p["tags"][:5],
-            "updated": p["updated"][:10] if p["updated"] else "",
+            "tags": p["tags"][:5] if isinstance(p.get("tags"), list) else [],
+            "updated": upd_str,
             "confidence": p.get("confidence", ""),
         })
 

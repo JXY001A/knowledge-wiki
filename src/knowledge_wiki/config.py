@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # Retrieval v2 — 新检索流水线开关（False 时回退旧实现）
     use_new_retrieval: bool = True
 
-    model_config = {"env_prefix": "", "extra": "ignore"}
+    model_config = {"env_prefix": "", "extra": "ignore", "env_file": ".env", "env_file_encoding": "utf-8"}
 
 
 settings = Settings()

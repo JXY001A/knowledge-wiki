@@ -189,11 +189,15 @@ def process_message(user_id: str, text: str, send_md, send_tpl):
     try:
         stripped = text.strip()
 
-        # 构建执行上下文
+        # 构建执行上下文（send_md 包装：调用即标记 _handled，防止重复回复）
+        def _wrapped_send_md(uid, text):
+            ctx["_handled"] = True
+            send_md(uid, text)
+
         ctx = {
             "user_id": user_id,
             "input_text": stripped,
-            "send_md": send_md,
+            "send_md": _wrapped_send_md,
             "send_tpl": send_tpl,
         }
 

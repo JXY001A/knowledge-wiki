@@ -73,6 +73,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--port", type=int, default=None, help="监听端口（默认 9400）"
     )
 
+    # ---------- scheduler 子命令 ----------
+    scheduler_parser = subparsers.add_parser("scheduler", help="启动定时任务调度器")
+    scheduler_parser.add_argument(
+        "--no-start", action="store_true", help="仅验证配置，不启动"
+    )
+
+    # ---------- db 子命令 ----------
+    db_parser = subparsers.add_parser("db", help="数据库管理")
+    db_sub = db_parser.add_subparsers(dest="db_action", help="操作")
+
+    db_init = db_sub.add_parser("init", help="初始化 assistant 数据库 schema")
+    db_backup = db_sub.add_parser("backup", help="手动备份数据库（SQL dump）")
+    db_stats = db_sub.add_parser("stats", help="查看助理数据库统计")
+    db_migrate = db_sub.add_parser("migrate", help="执行数据库迁移")
+
     return parser
 
 
@@ -95,6 +110,79 @@ def handle(args: argparse.Namespace) -> None:
         from knowledge_wiki.app.webhook import run_webhook
 
         run_webhook(host=args.host, port=args.port)
+
+    elif args.command == "scheduler":
+        # 懒加载：调度器 + 后台任务
+        from knowledge_wiki.assistant.scheduler import start_scheduler, stop_scheduler, get_scheduler
+
+        if args.no_start:
+            scheduler = get_scheduler()
+            jobs = scheduler.get_jobs()
+            print(f"调度器就绪，{len(jobs)} 个预置 job：")
+            for j in sorted(jobs, key=lambda j: j.id):
+                print(f"  [{j.id}] {j.name} — {j.next_run_time}")
+        else:
+            import signal
+            import time
+
+            start_scheduler()
+            scheduler = get_scheduler()
+            jobs = scheduler.get_jobs()
+            print(f"调度器已启动，{len(jobs)} 个 job")
+            for j in sorted(jobs, key=lambda j: j.id):
+                print(f"  [{j.id}] {j.name} — next: {j.next_run_time}")
+
+            # 优雅关闭
+            def _shutdown(signum, frame):
+                print("\n正在停止调度器...")
+                stop_scheduler()
+                import sys
+                sys.exit(0)
+
+            signal.signal(signal.SIGINT, _shutdown)
+            signal.signal(signal.SIGTERM, _shutdown)
+
+            try:
+                while True:
+                    time.sleep(60)
+            except (KeyboardInterrupt, SystemExit):
+                pass
+
+    elif args.command == "db":
+        # 懒加载：数据库管理操作
+        from knowledge_wiki.assistant.db import get_db, init_schema as init_assistant_db
+
+        if args.db_action == "init":
+            conn = get_db()
+            ver = init_assistant_db(conn)
+            tables = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            ).fetchall()
+            print(f"数据库 schema 已初始化（v{ver}）")
+            print(f"表列表：{', '.join(r[0] for r in tables)}")
+            conn.close()
+
+        elif args.db_action == "backup":
+            from knowledge_wiki.assistant.backup import backup_database
+            print(backup_database())
+
+        elif args.db_action == "stats":
+            conn = get_db()
+            init_assistant_db(conn)
+            tables = ["todos", "reminders", "notes", "bookmarks", "habits"]
+            for t in tables:
+                count = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                print(f"  {t}: {count}")
+            conn.close()
+
+        elif args.db_action == "migrate":
+            conn = get_db()
+            ver = init_assistant_db(conn)
+            print(f"迁移完成，当前版本：v{ver}")
+            conn.close()
+
+        else:
+            print("用法：kw-server db [init|backup|stats|migrate]")
 
     else:
         # 未提供任何子命令时，打印帮助信息并退出（退出码 1 表示异常终止）

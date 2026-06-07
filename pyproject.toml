@@ -59,6 +59,10 @@ dependencies = [
     # ------ retrieval v2 依赖 ------
     # 中文分词（jieba lcut / cut_for_search）
     "jieba>=0.42.1",
+
+    # ------ Phase 3 + Track B 依赖 ------
+    # 定时任务调度（早报/备份/提醒扫描）
+    "apscheduler>=3.10",
     # BM25 Okapi 实现（多字段加权检索）
     "rank-bm25>=0.2.2",
     # zstd 压缩（索引序列化）

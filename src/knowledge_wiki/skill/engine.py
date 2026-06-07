@@ -109,14 +109,32 @@ def match_skill(intent: str) -> Skill | None:
 # 强信号词 → 技能映射（预处理，不需要 LLM）
 # 这些词足够明确，即使 LLM 误判也能纠正
 _STRONG_SIGNALS = [
-    (["加到待办", "加入到待办", "添加到待办", "记一个待办", "创建待办", "新建待办", "加一个待办", "弄到待办"], "todo-manage"),
+    (["加到待办", "加入到待办", "添加到待办", "记一个待办", "创建待办", "新建待办",
+      "加一个待办", "弄到待办", "设为待办", "做待办", "建待办"], "todo-manage"),
     (["待办列表", "查看待办", "我的待办", "有哪些待办", "列出待办"], "todo-manage"),
-    (["记一下", "记个笔记", "备忘", "闪念"], "note-quick"),
-    (["收藏链接", "收藏网址", "加个书签"], "bookmark-save"),
+    (["记一下", "记个笔记", "备忘", "闪念", "记笔记"], "note-quick"),
+    (["收藏链接", "收藏网址", "加个书签", "加书签"], "bookmark-save"),
     (["今天要做什么", "今天有什么", "明天要做什么", "我的日程"], "schedule-view"),
     (["早报", "晚报", "今日简报"], "daily-brief"),
     (["打卡", "习惯打卡"], "habit-track"),
+    (["闹钟", "到点提醒我", "到时间叫我", "叫我起床"], "remind-set"),
     (["健康检查", "巡检", "知识库检查"], "lint-wiki"),
+]
+
+
+def _check_remind_or_todo(text: str) -> str | None:
+    """特殊处理：'提醒我' + 活动 = todo-manage，不是 remind-set.
+
+    '明天9点提醒我上班' → todo（有一个具体活动要完成）
+    '3点叫我' → remind（只是时间通知）
+    """
+    if "提醒我" in text:
+        # 如果"提醒我"后面有实质内容（>2字），就是待办
+        idx = text.find("提醒我")
+        after = text[idx + 3:].strip()
+        if len(after) >= 2:
+            return "todo-manage"
+    return None
 ]
 
 
@@ -136,6 +154,10 @@ def classify_intent_llm(text: str) -> str | None:
     """
     # 1. 强信号词检查
     result = _check_strong_signals(text)
+    if result:
+        return result
+    # 1b. 提醒我 + 活动 → 待办
+    result = _check_remind_or_todo(text)
     if result:
         return result
 

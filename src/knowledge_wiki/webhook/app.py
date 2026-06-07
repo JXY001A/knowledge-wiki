@@ -118,6 +118,13 @@ def create_app() -> Flask:
             "history": [],
         })
 
+    @app.route("/chat", methods=["GET"])
+    def chat_page():
+        """Web 端聊天界面."""
+        from pathlib import Path
+        html_path = Path(__file__).parent / "templates" / "chat.html"
+        return html_path.read_text(encoding="utf-8")
+
     # 管理后台
     @app.route("/admin", methods=["GET"])
     def admin_dashboard():

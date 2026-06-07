@@ -95,8 +95,7 @@ def evaluate_answer(question: str, answer: str, wiki_context: str = "") -> EvalR
     Returns:
         EvalResult 或 None（评估失败）
     """
-    import os
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    api_key = settings.deepseek_api_key
     if not api_key:
         _log.warning("DEEPSEEK_API_KEY not set, skip evaluation")
         return None

@@ -117,8 +117,9 @@ def _todo_stats() -> dict:
     for r in conn.execute("SELECT * FROM todos ORDER BY created_at DESC LIMIT 5").fetchall():
         t = Todo.from_row(r)
         dl = (t.deadline or "")[:10] if t.deadline else ""
+        created = str(t.created_at)[:16] if t.created_at else ""
         recent.append({"title": t.title, "status": t.status, "priority": t.priority,
-                       "deadline": dl, "created": (t.created_at or "")[:10]})
+                       "deadline": dl, "created": created})
 
     conn.close()
     return {"total": total, "pending": pending, "done": done, "cancelled": cancelled,

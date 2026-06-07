@@ -149,7 +149,7 @@ function renderSkills(){
 
   const td=data.todos;
   document.getElementById('recentTodos').innerHTML=td.recent.map(t=>
-    `<li><span style="color:${t.status==='done'?'#4ade80':t.status==='cancelled'?'#94a3b8':'#fbbf24'}">${t.status==='done'?'✅':'⏳'} ${t.title}</span><span>${t.deadline||''}</span></li>`
+    `<li><span style="color:${t.status==='done'?'#4ade80':t.status==='cancelled'?'#94a3b8':'#fbbf24'}">${t.status==='done'?'✅':'⏳'} ${t.title}</span><span style="font-size:11px;color:#64748b">${t.created||''}${t.deadline?' | ⏰'+t.deadline:''}</span></li>`
   ).join('')||'<li>暂无待办</li>';
 }
 

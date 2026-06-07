@@ -96,6 +96,35 @@ def create_server() -> FastMCP:
     mcp.tool()(memory_stats_tool)
     mcp.tool()(memory_context)
 
+    # 注册用户画像工具
+    from knowledge_wiki.memory.profile import build_profile, write_user_md
+    from knowledge_wiki.memory.semantic import concept_coverage_report
+
+    async def profile_view() -> str:
+        """查看用户画像（从记忆数据自动生成）."""
+        profile = build_profile()
+        if profile.get("status") == "empty":
+            return "暂无足够的交互数据生成画像。开始使用知识库后自动填充。"
+        lines = [
+            f"## 用户画像",
+            f"总交互：{profile['total']} 次 | 活跃 {profile.get('active_days', 0)} 天",
+            f"活跃领域：{list(profile.get('top_domains', {}).keys())[:5]}",
+            f"交互类型：{profile.get('by_type', {})}",
+        ]
+        return "\n".join(lines)
+
+    async def profile_update() -> str:
+        """更新 USER.md 用户画像文件."""
+        return write_user_md()
+
+    async def concept_coverage() -> str:
+        """分析概念覆盖度：缺失概念、领域分布、关联密度."""
+        return concept_coverage_report()
+
+    mcp.tool()(profile_view)
+    mcp.tool()(profile_update)
+    mcp.tool()(concept_coverage)
+
     # 注册 Phase 2 技能工具
     from knowledge_wiki.skill.registry import get_skills_summary
     from knowledge_wiki.skill.planner import execute_skill

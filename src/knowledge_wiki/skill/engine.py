@@ -58,16 +58,31 @@ def load_skill_resources(skill: Skill) -> dict[str, str]:
 def match_skill(intent: str) -> Skill | None:
     """根据用户意图匹配最合适的技能.
 
-    优先级：triggers 精确匹配 > 名称包含 > 描述包含.
+    优先级：最长触发词匹配 > 名称包含 > 描述包含.
+    长触发词优先（"待办" 长度2 > "喝水" 长度2，相等时取先匹配到的）。
     """
     skills = list_skills()
     intent_lower = intent.lower()
 
-    # 精确触发词匹配
+    # 触发词匹配 — 最长优先，同长时 Tier 低者优先（核心技能 > 懒加载）
+    best_skill = None
+    best_len = 0
+    best_tier = 99
     for skill in skills:
         for trigger in skill.triggers:
             if trigger.lower() in intent_lower:
-                return skill
+                better = False
+                if len(trigger) > best_len:
+                    better = True
+                elif len(trigger) == best_len and skill.tier < best_tier:
+                    better = True
+                if better:
+                    best_skill = skill
+                    best_len = len(trigger)
+                    best_tier = skill.tier
+
+    if best_skill:
+        return best_skill
 
     # 名称包含
     for skill in skills:

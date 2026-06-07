@@ -39,7 +39,10 @@ def get_scheduler() -> BackgroundScheduler:
 
 def _create_scheduler() -> BackgroundScheduler:
     """创建调度器，注册系统预置 Job，恢复持久化 Job."""
-    scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
+    scheduler = BackgroundScheduler(
+        timezone="Asia/Shanghai",
+        job_defaults={"misfire_grace_time": 3600},  # 1小时内错过的 job 仍触发
+    )
 
     # ---- 系统预置 Job ----
 

@@ -5,6 +5,7 @@ import json
 import re
 import urllib.request
 import urllib.error
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +23,18 @@ from knowledge_wiki.memory import record_query as memory_record_query
 from knowledge_wiki.memory import record_ingest as memory_record_ingest
 
 WIKI_ROOT = settings.wiki_root
+
+# Debug log path
+_DEBUG_LOG = Path("/tmp/wecom_debug.log")
+
+
+def _debug(msg: str):
+    """写 debug 日志到文件."""
+    try:
+        with open(_DEBUG_LOG, "a") as f:
+            f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
+    except Exception:
+        pass
 
 
 # ---- URL 处理 ----
@@ -44,7 +57,6 @@ def fetch_url_text(url: str) -> str | None:
         if "text/plain" in content_type or "text/markdown" in content_type:
             return html_data
 
-        # 提取标题: og:title > h1 > <title>
         title = ""
         for pattern in [
             r'<meta\s+property="og:title"\s+content="(.*?)"',
@@ -60,11 +72,9 @@ def fetch_url_text(url: str) -> str | None:
         if not title:
             title = url
 
-        # 移除 script, style, nav, footer, header
         for tag in ["script", "style", "nav", "footer", "header"]:
             html_data = re.sub(rf"<{tag}[^>]*>.*?</{tag}>", "", html_data, flags=re.DOTALL | re.IGNORECASE)
 
-        # 剥离 HTML 标签
         text = re.sub(r"<[^>]+>", "\n", html_data)
         text = html_mod.unescape(text)
         text = re.sub(r"&nbsp;", " ", text)
@@ -85,7 +95,6 @@ def fetch_url_text(url: str) -> str | None:
 def handle_url_ingest(user_id: str, url: str, send_md, send_tpl):
     """自动摄取 URL: 下载 → LLM 分析 → wiki 页面 → 日志 → git push."""
     send_md(user_id, f"正在提取并分析链接内容...\n\n{url[:200]}")
-
     raw_text = fetch_url_text(url)
     if not raw_text:
         filepath = save_to_inbox(f"待摄取：{url}", "url")
@@ -94,7 +103,6 @@ def handle_url_ingest(user_id: str, url: str, send_md, send_tpl):
         return
 
     raw_file = save_to_inbox(raw_text, "url")
-
     llm_data = call_ingest(raw_text, url)
     if not llm_data:
         commit_and_push(f"ingest: raw {url[:80]}")
@@ -110,20 +118,15 @@ def handle_url_ingest(user_id: str, url: str, send_md, send_tpl):
 
     page_title = llm_data.get("title", wiki_file.stem)
     append_ingest_log(llm_data, url, page_title)
-
     commit_and_push(f"ingest: {page_title}")
 
     concept_names = extract_concept_names(llm_data.get("concepts", []))
     domain = llm_data.get("domain", "未知")
     summary = llm_data.get("summary", "")
-    # 记录结构化记忆
     all_pages = [page_title] + [cp.stem for cp in new_concept_pages]
     memory_record_ingest(
-        title=page_title,
-        domain=domain,
-        concepts=concept_names,
-        pages=all_pages,
-        user_id=user_id,
+        title=page_title, domain=domain, concepts=concept_names,
+        pages=all_pages, user_id=user_id,
     )
 
     msg = f"已摄取到知识库\n\n**{page_title}**\n领域：{domain}\n{summary}"
@@ -133,38 +136,22 @@ def handle_url_ingest(user_id: str, url: str, send_md, send_tpl):
 
 
 def handle_query_msg(user_id: str, question: str, send_md, send_tpl):
-    """新检索流水线 → qwen2.5:3b markdown → 回复.
-
-    v2: 使用 call_detailed（markdown 格式）替代 call_json（JSON cards），
-    新检索流水线产出的结构化上下文对 3B 模型更友好。
-    """
-    # 获取新检索流水线结果
+    """新检索流水线 → qwen2.5:3b markdown → 回复."""
     context = mcp_query(question)
     if not context:
         send_md(user_id, "知识库查询失败，请重试。")
         return
 
-    # 去除可能残留的 YAML frontmatter
     context = strip_frontmatter(context)
-
-    # 用 qwen2.5:3b 生成详细 markdown 回答（失败时用检索原文）
     answer = call_detailed(question, context)
     if not answer:
-        # 最终 fallback：直接发送检索结果前 3000 字
         answer = context[:3000]
 
-    # 企业微信 markdown 消息字数上限约 4096，但实际编码后可能超，取 3000 保守
     send_md(user_id, answer[:3000])
 
-    # 记录结构化记忆
     from knowledge_wiki.wiki.search import extract_wikilinks
     used_pages = list(set(extract_wikilinks(context)))[:10]
-    memory_record_query(
-        question=question,
-        pages=used_pages,
-        concepts=[],
-        user_id=user_id,
-    )
+    memory_record_query(question=question, pages=used_pages, concepts=[], user_id=user_id)
 
 
 def handle_inbox_text(user_id: str, text: str, send_md):
@@ -175,24 +162,17 @@ def handle_inbox_text(user_id: str, text: str, send_md):
 
 
 def process_message(user_id: str, text: str, send_md, send_tpl):
-    """处理收到的消息 — 通过 Skill 引擎路由分发.
-
-    流程：
-    1. 提取意图（? 查询、URL、纯文本）
-    2. 技能引擎匹配最合适的 Skill
-    3. 执行 Skill 的 impl.py
-    4. Skill 内部通过 send_md / send_tpl 回调回复用户
-    """
+    """处理收到的消息 — 通过 Skill 引擎路由分发."""
     from knowledge_wiki.skill.engine import match_skill
     from knowledge_wiki.skill.planner import execute_skill
 
     try:
         stripped = text.strip()
+        _debug(f"IN user={user_id} text={stripped[:120]}")
 
-        # 构建执行上下文（send_md 包装：调用即标记 _handled，防止重复回复）
-        def _wrapped_send_md(uid, text):
+        def _wrapped_send_md(uid, txt):
             ctx["_handled"] = True
-            send_md(uid, text)
+            send_md(uid, txt)
 
         ctx = {
             "user_id": user_id,
@@ -201,9 +181,7 @@ def process_message(user_id: str, text: str, send_md, send_tpl):
             "send_tpl": send_tpl,
         }
 
-        # 意图 → 技能匹配
         skill = None
-
         if stripped.startswith("?"):
             question = stripped[1:].strip()
             if not question:
@@ -211,25 +189,22 @@ def process_message(user_id: str, text: str, send_md, send_tpl):
                 return
             ctx["query"] = question
             skill = match_skill(question)
-
         elif is_url(stripped):
             skill = match_skill(stripped)
-
         else:
-            # 纯文本：关键词匹配 → LLM 分类兜底
             skill = match_skill(stripped)
             if not skill:
-                # 关键词没匹配到，用 LLM 判断意图
                 from knowledge_wiki.skill.engine import classify_intent_llm
                 skill_name = classify_intent_llm(stripped)
+                _debug(f"LLM classify: {skill_name}")
                 if skill_name:
                     from knowledge_wiki.skill.registry import find_skill
                     skill = find_skill(skill_name)
 
-        # 技能回退链
+        _debug(f"skill={skill.name if skill else None}")
+
         if not skill:
             if stripped.startswith("?"):
-                # query-knowledge 作为 ? 查询的兜底
                 execute_skill("query-knowledge", ctx)
             elif is_url(stripped):
                 execute_skill("ingest-article", ctx)
@@ -237,25 +212,25 @@ def process_message(user_id: str, text: str, send_md, send_tpl):
                 execute_skill("save-note", ctx)
         else:
             result = execute_skill(skill.name, ctx)
-            # 某些技能通过回调发送消息（send_md），不需要返回文本
-            # 如果 execute 返回非空文本且没有 send_md，则用 send_md 发送
+            _debug(f"result_len={len(result) if result else 0} handled={ctx.get('_handled')}")
             if result and result.strip() and not ctx.get("_handled"):
                 send_md(user_id, result[:3000])
 
-    except Exception as e:
-        print(f"[wecom] process error: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
-        send_md(user_id, "处理消息时出错，请重试。")
+        _debug("DONE")
+
+    except Exception:
+        _debug(f"ERROR: {traceback.format_exc()}")
+        try:
+            send_md(user_id, "处理消息时出错，请重试。")
+        except Exception:
+            pass
 
 
 # ---- 提取辅助函数 ----
 
 def _normalize_details(raw: list) -> list[tuple[str, str]]:
-    """标准化 LLM details 输出为 template_card horizontal_content_list."""
     if not raw:
         return []
-
     result = []
     for item in raw:
         if isinstance(item, (list, tuple)):
@@ -272,16 +247,13 @@ def _normalize_details(raw: list) -> list[tuple[str, str]]:
                         result.append((str(k)[:20], str(v)[:60]))
         elif isinstance(item, str):
             result.append(("", str(item)[:60]))
-
     if not result and all(isinstance(x, str) for x in raw):
         for i in range(0, len(raw) - 1, 2):
             result.append((str(raw[i])[:20], str(raw[i + 1])[:60]))
-
     return result[:10]
 
 
 def _extract_first_meaningful_text(body: str) -> str:
-    """提取 wiki 页面第一个有意义的段落作为卡片描述."""
     lines = body.strip().split("\n")
     text_lines = []
     for line in lines:
@@ -300,20 +272,16 @@ def _extract_first_meaningful_text(body: str) -> str:
 
 
 def _extract_kv_from_markdown(body: str) -> list[tuple[str, str]]:
-    """从 markdown 表格中提取 key-value 对."""
     pairs = []
     lines = body.split("\n")
     headers = []
-
     for line in lines:
         s = line.strip()
         if not s.startswith("|"):
             headers = []
             continue
-
         if re.match(r"^[\s|:\-]+$", s):
             continue
-
         cells = [c.strip() for c in s.strip("|").split("|")]
         if not headers and len(cells) >= 2:
             headers = cells
@@ -322,12 +290,10 @@ def _extract_kv_from_markdown(body: str) -> list[tuple[str, str]]:
                 if h and v and h not in ("---", ":", "-"):
                     pairs.append((h, v))
             break
-
     return pairs[:6]
 
 
 def _extract_section_kv(body: str) -> list[tuple[str, str]]:
-    """Fallback: 使用 ## section 标题作为隐式 key-value."""
     sections = re.split(r"\n##\s+", body)
     pairs = []
     for sec in sections[1:]:
@@ -345,7 +311,6 @@ def _extract_section_kv(body: str) -> list[tuple[str, str]]:
 
 
 def _clean_markdown(text: str) -> str:
-    """清理 LLM markdown 以适配企业微信显示."""
     text = re.sub(r"```[\s\S]*?```", lambda m: "[代码]", text)
     lines = text.split("\n")
     cleaned = []

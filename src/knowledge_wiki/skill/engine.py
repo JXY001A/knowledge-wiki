@@ -1,6 +1,9 @@
 """渐进式加载引擎 — 三级加载（名称+描述 → SKILL.md 正文 → 脚本/资源）."""
 
+import json
+import urllib.request
 from knowledge_wiki.skill.registry import list_skills, get_skills_for_tier, Skill
+from knowledge_wiki.config import settings
 
 
 def generate_tier1_context() -> str:
@@ -101,3 +104,111 @@ def match_skill(intent: str) -> Skill | None:
             return skill
 
     return None
+
+
+def classify_intent_llm(text: str) -> str | None:
+    """用本地 Ollama 做意图分类，返回技能名.
+
+    比关键词匹配强在：理解语义而非匹配字符串。
+    """
+    skills = list_skills()
+    if not skills:
+        return None
+
+    skill_list = "\n".join(
+        f"- {s.name}: {s.description}"
+        for s in sorted(skills, key=lambda s: s.tier)
+    )
+
+    prompt = f"""你是意图分类器。根据用户输入，从以下技能中选择最匹配的一个。
+
+可用技能：
+{skill_list}
+
+规则：
+- 用户说"待办/todo/任务/要做/添加" → todo-manage
+- 用户说"提醒/闹钟/几点/叫我/记得" → remind-set
+- 用户说"笔记/备忘/记一下" → note-quick
+- 用户说"书签/收藏/稍后读" → bookmark-save
+- 用户说"今天/明天/日程/安排" → schedule-view
+- 用户说"日报/早报/晚报/简报/总结" → daily-brief
+- 用户说"打卡/习惯" → habit-track
+- 用户问问题（以?开头或包含"是什么/怎么/为什么"） → query-knowledge
+- URL链接 → ingest-article
+- 其他无明确意图的文本 → save-note
+
+只输出技能名称，不要解释。"""
+
+    try:
+        body = json.dumps({
+            "model": "qwen2.5:3b",
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": text},
+            ],
+            "stream": False,
+            "options": {"num_predict": 20, "temperature": 0.0},
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{settings.ollama_base_url}/api/chat",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+            skill_name = result.get("message", {}).get("content", "").strip().lower()
+
+        valid_names = {s.name for s in skills}
+        for name in valid_names:
+            if name in skill_name:
+                return name
+
+        return None
+    except Exception:
+        return None
+
+
+def classify_todo_action(text: str) -> dict:
+    """用 LLM 解析待办操作：创建/完成/删除/列表，提取结构化字段."""
+    import re
+
+    prompt = """你是待办解析器。分析用户输入，输出 JSON。
+
+格式：{"action":"create|complete|delete|list","title":"标题(≤20字)","priority":"high|medium|low","deadline":"YYYY-MM-DD或null","tags":["标签"]}
+
+规则：
+- action: "完成/做了/搞定/done"→complete, "取消/删除"→delete, "列出/查看/有哪些/list"→list, 其他→create
+- title: 核心待办事项，去掉时间/优先级/标签修饰词
+- priority: "紧急/重要/高优先/high"→high, "不急/低优先/low"→low, 默认→medium
+- deadline: 今天=2026-06-07, 明天=2026-06-08, 后天=2026-06-09, 下周一=下周一日期
+- tags: 从 #标签 或关键词提取
+
+只输出JSON。"""
+
+    try:
+        body = json.dumps({
+            "model": "qwen2.5:3b",
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": text},
+            ],
+            "stream": False,
+            "options": {"num_predict": 200, "temperature": 0.0},
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{settings.ollama_base_url}/api/chat",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read())
+            raw = result.get("message", {}).get("content", "").strip()
+
+        m = re.search(r'\{[^{}]*\}', raw, re.DOTALL)
+        if m:
+            return json.loads(m.group(0))
+        return {"action": "create", "title": text[:40], "priority": "medium", "deadline": None, "tags": []}
+    except Exception:
+        return {"action": "create", "title": text[:40], "priority": "medium", "deadline": None, "tags": []}

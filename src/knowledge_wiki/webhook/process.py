@@ -216,8 +216,15 @@ def process_message(user_id: str, text: str, send_md, send_tpl):
             skill = match_skill(stripped)
 
         else:
-            # 纯文本：尝试匹配显式触发词，否则回退到 save-note
-            skill = match_skill(stripped)  # "记录" "保存" → save-note
+            # 纯文本：关键词匹配 → LLM 分类兜底
+            skill = match_skill(stripped)
+            if not skill:
+                # 关键词没匹配到，用 LLM 判断意图
+                from knowledge_wiki.skill.engine import classify_intent_llm
+                skill_name = classify_intent_llm(stripped)
+                if skill_name:
+                    from knowledge_wiki.skill.registry import find_skill
+                    skill = find_skill(skill_name)
 
         # 技能回退链
         if not skill:

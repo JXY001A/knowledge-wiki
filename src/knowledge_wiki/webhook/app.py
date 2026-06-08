@@ -209,14 +209,14 @@ def create_app() -> Flask:
         from knowledge_wiki.webhook.admin import dashboard_data
         return jsonify(dashboard_data())
 
-    # React SPA — 所有非 API 路径返回 index.html
-    @app.route("/", defaults={"path": ""}, methods=["GET"])
-    @app.route("/<path:path>", methods=["GET"])
-    def spa_fallback(path):
-        if path.startswith(("webhook", "chat/convs", "chat", "admin/data", "health")):
-            from flask import abort; abort(404)
-        if path.startswith("assets/"):
-            return serve_static(path.replace("assets/", ""))
-        return serve_react(path)
+    # React SPA — / + /chat + /admin + /status 返回 React
+    _spa_routes = ["/", "/chat", "/admin", "/status"]
+    for r in _spa_routes:
+        app.add_url_rule(r, f"spa_{r}", serve_react)
+
+    # React 静态资源
+    @app.route("/assets/<filename>", methods=["GET"])
+    def react_assets(filename):
+        return serve_static(filename)
 
     return app

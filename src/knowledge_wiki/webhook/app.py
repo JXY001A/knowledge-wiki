@@ -13,7 +13,24 @@ from knowledge_wiki.webhook.process import process_message
 
 def create_app() -> Flask:
     """创建 Flask 应用并注册路由."""
-    app = Flask(__name__)
+    from pathlib import Path
+    app = Flask(__name__, static_folder=None)
+
+    # React 静态文件目录
+    REACT_DIST = Path(__file__).parent.parent.parent.parent / "web" / "dist"
+
+    def serve_react(path=""):
+        """SPA fallback: 非 API 路径返回 React index.html."""
+        from flask import send_from_directory
+        if not (REACT_DIST / "index.html").exists():
+            return "<h1>React build not found. Run: cd web && npm run build</h1>", 500
+        return send_from_directory(str(REACT_DIST), "index.html")
+
+    def serve_static(filename):
+        """服务 React 静态资源."""
+        from flask import send_from_directory
+        assets = REACT_DIST / "assets"
+        return send_from_directory(str(assets), filename)
 
     @app.route("/webhook", methods=["GET"])
     def verify_url():
@@ -75,7 +92,6 @@ def create_app() -> Flask:
     def health():
         """健康检查端点."""
         from knowledge_wiki.wiki.paths import RAW_INBOX
-
         return jsonify({
             "status": "ok",
             "configured": bool(settings.wecom_token and settings.wecom_aes_key and settings.wecom_corp_id),
@@ -83,14 +99,6 @@ def create_app() -> Flask:
             "wiki_root": str(settings.wiki_root),
             "inbox_exists": RAW_INBOX.exists(),
         })
-
-    # 主页面
-    @app.route("/", methods=["GET"])
-    def index():
-        """Web 端聊天入口."""
-        from pathlib import Path
-        html_path = Path(__file__).parent / "templates" / "index.html"
-        return html_path.read_text(encoding="utf-8")
 
     # 聊天 API
     @app.route("/chat", methods=["POST"])
@@ -117,13 +125,6 @@ def create_app() -> Flask:
             "reply": replies[0] if replies else "处理完成",
             "history": [],
         })
-
-    @app.route("/chat", methods=["GET"])
-    def chat_page():
-        """Web 端聊天界面."""
-        from pathlib import Path
-        html_path = Path(__file__).parent / "templates" / "chat.html"
-        return html_path.read_text(encoding="utf-8")
 
     # 会话持久化 API
     @app.route("/chat/convs", methods=["GET"])
@@ -202,26 +203,20 @@ def create_app() -> Flask:
         conn.close()
         return jsonify({"ok": True})
 
-    # 服务器状态页
-    @app.route("/status", methods=["GET"])
-    def server_status():
-        """DevMechin 服务器运行状态."""
-        from pathlib import Path
-        html_path = Path(__file__).parent / "templates" / "status.html"
-        return html_path.read_text(encoding="utf-8")
-
-    # 管理后台
-    @app.route("/admin", methods=["GET"])
-    def admin_dashboard():
-        """管理后台仪表盘."""
-        from pathlib import Path
-        html_path = Path(__file__).parent / "templates" / "dashboard.html"
-        return html_path.read_text(encoding="utf-8")
-
     @app.route("/admin/data", methods=["GET"])
     def admin_data():
         """仪表盘 JSON 数据."""
         from knowledge_wiki.webhook.admin import dashboard_data
         return jsonify(dashboard_data())
+
+    # React SPA — 所有非 API 路径返回 index.html
+    @app.route("/", defaults={"path": ""}, methods=["GET"])
+    @app.route("/<path:path>", methods=["GET"])
+    def spa_fallback(path):
+        if path.startswith(("webhook", "chat/convs", "chat", "admin/data", "health")):
+            from flask import abort; abort(404)
+        if path.startswith("assets/"):
+            return serve_static(path.replace("assets/", ""))
+        return serve_react(path)
 
     return app

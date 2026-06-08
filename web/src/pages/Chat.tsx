@@ -10,7 +10,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<ConvMsg[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const sidebarOpen = true;
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => { api.listConvs().then(setConvs).catch(() => {}); }, []);

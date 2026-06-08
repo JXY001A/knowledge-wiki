@@ -17,7 +17,7 @@ export default function Status() {
   const { data, loading, error, reload } = usePolling<DashboardData>(api.getDashboard, 15);
   const [intervalSec, setIntervalSec] = useState(15);
   const [countdown, setCountdown] = useState(15);
-  const timer = useRef<ReturnType<typeof setInterval>>();
+  const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   function changeInterval(sec: number) { setIntervalSec(sec); setCountdown(sec); }
 
@@ -55,7 +55,7 @@ export default function Status() {
 
         {ss && <>
           <div className="grid sm:grid-cols-2 gap-3 mb-6">
-            {serviceDefs.map(s => <ServiceBadge key={s.key} {...s} up={svc[s.key] !== false} />)}
+            {serviceDefs.map(({ key, ...s }) => <ServiceBadge key={key} {...s} up={svc[key] !== false} />)}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">

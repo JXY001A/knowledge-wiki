@@ -2,7 +2,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 const COLORS = ['#3b82f6', '#16a34a', '#eab308', '#ef4444', '#8b5cf6', '#f97316', '#06b6d4', '#ec4899'];
 
-export function TrendChart({ data, lines }: { data: Record<string, unknown>[]; lines: { key: string; color: string; yAxisId?: string }[] }) {
+export function TrendChart({ data, lines }: { data: object[]; lines: { key: string; color: string; yAxisId?: string }[] }) {
   return (
     <ResponsiveContainer width="100%" height={200}>
       <LineChart data={data}>

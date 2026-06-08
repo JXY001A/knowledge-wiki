@@ -12,7 +12,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<typeof tabs[number]>('概览');
   if (loading || !data) return <div className="text-center py-16 text-slate-400">加载中...</div>;
 
-  const { overview: ov, eval_trend, wiki_growth, todos: td, memory_dist, gaps, reminders, skills, wiki_pages, query_log, server_status: ss } = data;
+  const { overview: ov, eval_trend, wiki_growth, todos: td, memory_dist, gaps, skills, wiki_pages, query_log, server_status: ss } = data;
   const svc = ss.services; const gpu = ss.gpu; const sys = ss.system;
   const done = ov.todos_total - ov.todos_pending;
 

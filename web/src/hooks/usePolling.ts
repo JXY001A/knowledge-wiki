@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-export function usePolling<T>(fetcher: () => Promise<T>, intervalSec: number) {
+export function usePolling<T>(fetcher: () => Promise<T>, _intervalSec: number) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setInterval>>();
+  const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const load = useCallback(async () => {
     try {

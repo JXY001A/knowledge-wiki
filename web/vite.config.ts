@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  optimizeDeps: { include: ['react', 'react-dom', 'react-router-dom', 'recharts'] },
   server: {
     proxy: {
       '/chat': 'http://localhost:9400',

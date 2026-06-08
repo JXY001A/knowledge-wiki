@@ -10,5 +10,5 @@ export default defineConfig({
       '/admin': 'http://localhost:9400',
     }
   },
-  build: { outDir: 'dist' }
+  build: { outDir: "build"
 })

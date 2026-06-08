@@ -100,14 +100,14 @@ def handle(args: argparse.Namespace) -> None:
     if args.command == "serve":
         # 懒加载：只有用户执行 serve 命令时才导入 server 模块，
         # 避免启动时加载所有模块，降低 CLI 的冷启动延迟
-        from knowledge_wiki.app.server import run_server
+        from knowledge_wiki.entrypoint.server import run_server
 
         # 将 None 或用户指定的值传入启动函数，由模块内部决定默认值
         run_server(host=args.host, port=args.port)
 
     elif args.command == "webhook":
         # 懒加载：只有用户执行 webhook 命令时才导入 webhook 模块
-        from knowledge_wiki.app.webhook import run_webhook
+        from knowledge_wiki.entrypoint.webhook import run_webhook
 
         run_webhook(host=args.host, port=args.port)
 

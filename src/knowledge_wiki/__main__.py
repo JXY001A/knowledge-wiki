@@ -3,7 +3,7 @@
 
 def main():
     """CLI 入口，解析子命令并启动对应服务."""
-    from knowledge_wiki.app.cli import cli
+    from knowledge_wiki.entrypoint.cli import cli
 
     cli()
 

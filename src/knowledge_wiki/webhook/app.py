@@ -206,7 +206,7 @@ def create_app() -> Flask:
     @app.route("/admin/data", methods=["GET"])
     def admin_data():
         """仪表盘 JSON 数据."""
-        from knowledge_wiki.webhook.admin import dashboard_data
+        from knowledge_wiki.webhook.dashboard import dashboard_data
         return jsonify(dashboard_data())
 
     # React SPA — / + /chat + /admin + /status 返回 React

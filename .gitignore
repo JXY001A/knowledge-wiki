@@ -16,9 +16,9 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
-dist/
-!/web/dist/
-!/web/dist/**
+
+# Frontend build output (deployed via rsync, not git)
+web/build/
 
 # Environment
 .env

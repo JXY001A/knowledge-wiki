@@ -1,0 +1,22 @@
+[Unit]
+Description=ALSA Mic to Speaker Loopback (USB 麦克风→音箱 实时监听)
+After=multi-user.target
+
+[Service]
+Type=simple
+User=jxy001a1
+Group=audio
+# 软件增益 +30dB 补偿硬件无 Mic Boost 的不足
+# 调整 gain 值可改变音量：10–50 范围，越大越响（注意破音）
+ExecStart=/usr/bin/bash -c "while true; do \
+    arecord -D plughw:2,0 -f S16_LE -r 48000 -c 1 2>/dev/null | \
+    sox -t wav - -t wav - gain 30 2>/dev/null | \
+    aplay -D plughw:2,0 -f S16_LE -r 48000 -c 2 2>/dev/null; \
+    sleep 1; done"
+Restart=always
+RestartSec=3
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

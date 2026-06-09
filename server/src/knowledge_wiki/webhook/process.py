@@ -207,6 +207,18 @@ def process_message(user_id: str, text: str, send_md, send_tpl,
             skill_name = classify_intent_llm(stripped)
             _debug(f"LLM classify: {skill_name}")
             if skill_name:
+                # 合理性校验：ingest-article 必须有 URL
+                if skill_name == "ingest-article" and not is_url(stripped):
+                    _debug("LLM classify rejected: ingest-article but no URL")
+                    skill_name = None
+                # 合理性校验：问题类文本不应被归为笔记/书签
+                if skill_name in ("note-quick", "bookmark-save") and (
+                    stripped.endswith("?") or stripped.endswith("？")
+                    or any(kw in stripped for kw in ["什么是", "如何", "怎么", "为什么", "介绍一下"])
+                ):
+                    _debug(f"LLM classify rejected: {skill_name} but looks like a question")
+                    skill_name = None
+            if skill_name:
                 from knowledge_wiki.skill.registry import find_skill
                 skill = find_skill(skill_name)
             if not skill:

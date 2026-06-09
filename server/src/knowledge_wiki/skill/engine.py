@@ -98,9 +98,15 @@ def match_skill(intent: str) -> Skill | None:
         if skill.name.lower().replace("-", " ") in intent_lower:
             return skill
 
-    # 描述包含
+    # 描述包含（仅匹配 ≥4 字的描述词，避免 "DeepSeek" 等常见名词误触发）
+    # 排除常见技术名词（它们不应作为意图分类依据）
+    _desc_exclude = {"deepseek", "ollama", "openai", "claude", "llama",
+                     "qwen", "gemini", "python", "react", "api", "url",
+                     "json", "http", "ssh", "git", "mcp", "wiki", "markdown"}
     for skill in skills:
-        if any(word in intent_lower for word in skill.description.lower().split() if len(word) > 2):
+        desc_words = [w for w in skill.description.lower().split()
+                      if len(w) > 3 and w not in _desc_exclude]
+        if any(word in intent_lower for word in desc_words):
             return skill
 
     return None

@@ -224,6 +224,11 @@ def process_message(user_id: str, text: str, send_md, send_tpl,
             if not skill:
                 skill = match_skill(stripped)  # 关键词兜底
 
+            # 合理性校验（关键词匹配后也要验证）
+            if skill and skill.name == "ingest-article" and not is_url(stripped):
+                _debug("keyword match rejected: ingest-article but no URL")
+                skill = None
+
         _debug(f"skill={skill.name if skill else None}")
 
         if not skill:

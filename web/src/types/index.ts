@@ -26,10 +26,21 @@ export interface SystemInfo { uptime: string; mem_used: string; mem_total: strin
 
 export interface ServerStatus { services: ServiceStatus; gpu: GpuInfo; system: SystemInfo }
 
+export interface QualityPanel {
+  eval_avg: number; eval_total: number; eval_stars: string;
+  low_score_domains: { domain: string; count: number }[];
+  recurring_gaps: { topic: string; count: number; last_seen: string }[];
+  unprocessed_raw: string[];
+  missing_concepts: string[];
+  relation_suggestions: { page1: string; page2: string; similarity: number; action: string }[];
+  auto_ingest: { week_count: number; week_limit: number; ingested: { topic: string; url: string; result: string; time: string }[]; week_start: string };
+}
+
 export interface DashboardData {
   overview: Overview; eval_trend: EvalTrend[]; wiki_growth: WikiGrowth[];
   todos: TodoStats; memory_dist: MemoryDist; gaps: GapItem[]; reminders: ReminderItem[];
   skills: SkillItem[]; wiki_pages: WikiDir[]; query_log: LogItem[]; server_status: ServerStatus;
+  quality: QualityPanel;
 }
 
 export interface ConvItem { id: string; title: string; updated_at: string }

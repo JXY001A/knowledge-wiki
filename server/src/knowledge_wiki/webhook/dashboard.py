@@ -22,6 +22,8 @@ def dashboard_data() -> dict:
         "wiki_pages": _wiki_page_list(),
         "query_log": _query_log(),
         "server_status": _server_status(),
+        # 质量面板新数据
+        "quality": _quality_panel(),
     }
 
 
@@ -369,3 +371,105 @@ def _query_log() -> list:
         })
 
     return log
+
+
+def _quality_panel() -> dict:
+    """知识库质量面板数据 — 评估均分趋势、低分领域、缺口状态、自动摄取统计."""
+    from knowledge_wiki.eval.scorer import get_eval_stats
+    from knowledge_wiki.evolve.gap_detector import get_recurring_gaps, generate_ingest_list
+
+    # 评估统计
+    eval_stats = get_eval_stats()
+
+    # 低分领域排行（从详情中提取）
+    low_score_domains = _low_score_domains()
+
+    # 知识缺口
+    recurring_gaps = get_recurring_gaps(min_occurrences=2, days=30)
+    ingest_list = generate_ingest_list()
+
+    # 自动摄取统计
+    auto_ingest_stats = _auto_ingest_stats()
+
+    # 关联建议（最多返回 5 条，避免 Dashboard 过重）
+    relation_suggestions = []
+    try:
+        from knowledge_wiki.wiki.retrieval.deep_process import discover_relations
+        relations = discover_relations(min_similarity=0.7, max_suggestions=5)
+        relation_suggestions = [
+            {"page1": r.page1, "page2": r.page2,
+             "similarity": r.similarity, "action": r.suggested_action}
+            for r in relations
+        ]
+    except Exception:
+        pass
+
+    return {
+        "eval_avg": eval_stats.get("avg_score", 0),
+        "eval_total": eval_stats.get("total", 0),
+        "eval_stars": eval_stats.get("stars", "暂无"),
+        "low_score_domains": low_score_domains[:5],
+        "recurring_gaps": [
+            {"topic": g["topic"], "count": g["count"], "last_seen": g["last_seen"]}
+            for g in recurring_gaps[:10]
+        ],
+        "unprocessed_raw": ingest_list.get("unprocessed_raw", [])[:5],
+        "missing_concepts": [
+            c if isinstance(c, str) else c.get("title", str(c))
+            for c in ingest_list.get("missing_concepts", [])[:5]
+        ],
+        "auto_ingest": auto_ingest_stats,
+        "relation_suggestions": relation_suggestions,
+    }
+
+
+def _low_score_domains() -> list[dict]:
+    """从评估记录中提取低分领域排行."""
+    try:
+        from knowledge_wiki.memory.db import get_db, init_schema
+        conn = get_db()
+        init_schema(conn)
+        rows = conn.execute(
+            "SELECT details, score FROM memory_events "
+            "WHERE score IS NOT NULL AND score <= 3 "
+            "ORDER BY created_at DESC LIMIT 50"
+        ).fetchall()
+        conn.close()
+
+        from collections import Counter
+        domain_counter = Counter()
+        for r in rows:
+            details = r["details"] or ""
+            # 尝试从 details 的 JSON 中提取 gaps
+            import json, re
+            try:
+                m = re.search(r"\{[^{}]*\"gaps\"[^{}]*\}", details, re.DOTALL)
+                if m:
+                    data = json.loads(m.group(0))
+                    for gap in data.get("gaps", []):
+                        domain_counter[gap] += 1
+            except Exception:
+                pass
+
+        return [{"domain": k, "count": v} for k, v in domain_counter.most_common(10)]
+    except Exception:
+        return []
+
+
+def _auto_ingest_stats() -> dict:
+    """自动摄取统计."""
+    try:
+        from knowledge_wiki.evolve.auto_ingest import (
+            _load_auto_ingest_log,
+            MAX_AUTO_INGEST_PER_WEEK,
+        )
+        log = _load_auto_ingest_log()
+        imported = datetime.now().isoformat()
+        return {
+            "week_count": log.get("count", 0),
+            "week_limit": MAX_AUTO_INGEST_PER_WEEK,
+            "ingested": log.get("ingested", [])[-5:],  # 最近 5 条
+            "week_start": log.get("week_start", ""),
+        }
+    except Exception:
+        return {"week_count": 0, "week_limit": 5, "ingested": [], "week_start": ""}

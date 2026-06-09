@@ -49,6 +49,17 @@ class RetrievalConfig:
         "body": 1.0,
     })
 
+    # ---- Embedding 语义检索 ----
+    # 是否启用语义检索（需 Ollama embedding 模型可用）
+    embedding_enabled: bool = True
+    # 语义检索返回 Top-K
+    embedding_top_k: int = 20
+    # RRF 平滑参数（越大越倾向召回更多结果）
+    rrf_k: int = 60
+    # BM25/Embedding 通路权重
+    bm25_weight: float = 1.0
+    embedding_weight: float = 1.0
+
     # ---- 分层组装 ----
     # 最终返回给 LLM 的结果数量
     final_top_n: int = 5

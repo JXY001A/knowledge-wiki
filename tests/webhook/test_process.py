@@ -2,8 +2,9 @@
 
 from unittest.mock import patch, MagicMock
 from knowledge_wiki.webhook.process import (
-    is_url, process_message, _extract_gaps_from_text,
+    is_url, process_message,
 )
+from knowledge_wiki.evolve.gap_detector import _extract_gaps_from_text
 
 
 class TestIsUrl:

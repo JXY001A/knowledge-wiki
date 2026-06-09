@@ -138,3 +138,81 @@ def call_summarize(content: str, max_tokens: int = 1024) -> str | None:
     except Exception as e:
         print(f"[llm] DeepSeek summarize failed: {e}", flush=True)
         return None
+
+
+def call_deepseek_query(question: str, context: str,
+                         system_prompt: str = "",
+                         model: str = "",
+                         max_tokens: int = 2048,
+                         temperature: float = 0.3) -> str | None:
+    """调用 DeepSeek API 生成知识库问答（带引用）.
+
+    Args:
+        question: 用户问题
+        context: 检索到的 wiki 上下文
+        system_prompt: 自定义 system prompt（为空则使用默认查询 prompt）
+        model: 模型名（默认使用 settings.deepseek_model_ingest）
+        max_tokens: 最大 token 数
+        temperature: 随机性参数
+
+    Returns:
+        回答文本或 None
+    """
+    api_key = settings.deepseek_api_key
+    if not api_key:
+        _log.warning("DEEPSEEK_API_KEY not set, skip DeepSeek query")
+        return None
+
+    if not system_prompt:
+        system_prompt = (
+            "你是个人知识库助手。基于提供的知识库资料回答用户问题。\n\n"
+            "**要求**：\n"
+            "1. 优先基于知识库资料回答，标注引用来源（用 [[页面名]] 格式）\n"
+            "2. 回答结构清晰，用 ## 标题分段\n"
+            "3. 用 **粗体** 强调关键术语\n"
+            "4. 用 - 列表展示多项信息\n"
+            "5. 不要用表格（|...|），不要用代码块（```）\n"
+            "6. 只基于提供的资料，不要编造\n"
+            "7. 回答末尾列出参考页面\n\n"
+            "请用中文回答，200-500 字。"
+        )
+
+    if not model:
+        model = settings.deepseek_model_ingest
+
+    import urllib.request
+
+    for attempt in range(3):
+        try:
+            body = json.dumps({
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"## 知识库检索结果\n\n{context[:12000]}\n\n---\n\n## 用户问题\n\n{question}"},
+                ],
+                "stream": False,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }).encode()
+
+            req = urllib.request.Request(
+                DEEPSEEK_API_URL,
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                result = json.loads(resp.read())
+                return result["choices"][0]["message"]["content"].strip()
+
+        except Exception as e:
+            if attempt < 2:
+                delay = 2.0 ** attempt
+                _log.warning("DeepSeek query failed (attempt %d/3): %s — retrying in %.1fs",
+                             attempt + 1, e, delay)
+                time.sleep(delay)
+            else:
+                _log.error("DeepSeek query failed after 3 attempts: %s", e)
+                return None

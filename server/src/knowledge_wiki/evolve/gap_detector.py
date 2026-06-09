@@ -49,6 +49,84 @@ def detect_gaps(min_score: int = 3) -> list[dict]:
     return gaps
 
 
+def get_recurring_gaps(min_occurrences: int = 3, days: int = 30) -> list[dict]:
+    """检测反复出现的知识缺口（同一主题被多次标记为缺口）.
+
+    从 memory_events 中提取 event_type='gap' 的记录，
+    按关键词聚合，返回出现次数 >= min_occurrences 的缺口。
+
+    Args:
+        min_occurrences: 最少出现次数阈值（达到此数触发自动摄取）
+        days: 统计最近 N 天
+
+    Returns:
+        [{"topic": "主题", "count": N, "last_seen": "YYYY-MM-DD", "queries": [...]}]
+    """
+    conn = get_db()
+    init_schema(conn)
+
+    try:
+        rows = conn.execute(
+            "SELECT summary, details, created_at FROM memory_events "
+            "WHERE event_type='gap' AND created_at > date('now', ?) "
+            "ORDER BY created_at DESC LIMIT 100",
+            [f"-{days} days"],
+        ).fetchall()
+    except Exception:
+        # SQLite date function syntax varies
+        from datetime import datetime, timedelta
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        rows = conn.execute(
+            "SELECT summary, details, created_at FROM memory_events "
+            "WHERE event_type='gap' AND created_at > ? "
+            "ORDER BY created_at DESC LIMIT 100",
+            [cutoff],
+        ).fetchall()
+    conn.close()
+
+    if not rows:
+        return []
+
+    # 按缺口主题聚合
+    from collections import defaultdict
+    gap_groups: dict[str, list] = defaultdict(list)
+
+    for r in rows:
+        summary = r["summary"] or ""
+        # 提取核心主题（去除"知识缺口："前缀）
+        topic = summary.replace("知识缺口：", "").strip()
+        if not topic:
+            continue
+        gap_groups[topic].append({
+            "summary": summary,
+            "details": r["details"] or "",
+            "created_at": r["created_at"][:10] if r["created_at"] else "",
+        })
+
+    # 筛选达到阈值的缺口
+    result = []
+    for topic, items in gap_groups.items():
+        if len(items) >= min_occurrences:
+            # 合并查询文本
+            queries = []
+            for item in items:
+                detail = item["details"] or ""
+                # 提取查询原文
+                if "查询：" in detail:
+                    q = detail.split("查询：")[1].split("\n")[0][:80]
+                    queries.append(q)
+            result.append({
+                "topic": topic,
+                "count": len(items),
+                "last_seen": items[0]["created_at"],
+                "queries": queries[:5],
+            })
+
+    # 按出现次数降序
+    result.sort(key=lambda g: -g["count"])
+    return result
+
+
 def _extract_gaps_from_text(text: str) -> list[str]:
     """从评估文本中提取缺口项.
 

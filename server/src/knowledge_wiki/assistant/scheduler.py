@@ -176,13 +176,141 @@ def remove_reminder_job(reminder_id: str) -> None:
 # ---- 系统 Job 实现（占位，后续 Phase 实现）----
 
 def _job_morning_brief():
-    """早报推送（通过企微主动推送）."""
-    _push_to_user("system", "☀️ 早上好！新的一天开始了。\n\n发送「早报」查看今日日程。")
+    """早报推送 — 生成 7 板块日报并主动推送到企微."""
+    try:
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        today_str = today.isoformat()
+        yesterday_str = (today - timedelta(days=1)).isoformat()
+
+        lines = [f"## ☀️ {today.strftime('%m月%d日')} 早报", ""]
+
+        # 1. 今日待办
+        lines.append("### 📋 今日待办")
+        lines.extend(_get_todo_section(today_str))
+        lines.append("")
+
+        # 2. 今日提醒
+        lines.append("### ⏰ 今日提醒")
+        lines.extend(_get_reminder_section(today_str))
+        lines.append("")
+
+        # 3. 习惯打卡
+        lines.append("### ✅ 习惯打卡")
+        lines.extend(_get_habit_section())
+        lines.append("")
+
+        # 4. 最近笔记
+        lines.append("### 📝 最近笔记")
+        lines.extend(_get_recent_notes_section(yesterday_str, today_str))
+        lines.append("")
+
+        # 5. 知识库动态
+        lines.append("### 📚 知识库动态")
+        lines.extend(_get_wiki_activity_section())
+        lines.append("")
+
+        # 6. AI 洞察
+        lines.append("### 💡 AI 洞察")
+        lines.extend(_get_insight_section())
+        lines.append("")
+
+        lines.append("---")
+        lines.append(f"*{datetime.now().strftime('%H:%M')} 自动生成 · [[操作日志|查看日志]]*")
+
+        brief = "\n".join(lines)
+        _push_to_user("system", brief[:3000])
+
+    except Exception as e:
+        _log.warning("[scheduler] 早报生成失败: %s", e)
 
 
 def _job_evening_brief():
-    """晚报推送（通过企微主动推送）."""
-    _push_to_user("system", "🌙 晚上好！发送「晚报」查看今日回顾。")
+    """晚报推送 — 今日回顾."""
+    try:
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        today_str = today.isoformat()
+
+        lines = [f"## 🌙 {today.strftime('%m月%d日')} 晚报", ""]
+
+        # 1. 今日完成
+        lines.append("### ✅ 今日完成")
+        try:
+            from knowledge_wiki.assistant.db import get_db, init_schema
+            conn = get_db()
+            init_schema(conn)
+            done_rows = conn.execute(
+                "SELECT * FROM todos WHERE status='done' "
+                "AND updated_at >= ? ORDER BY updated_at LIMIT 10",
+                [today_str],
+            ).fetchall()
+            if done_rows:
+                from knowledge_wiki.assistant.models import Todo
+                for r in done_rows[:8]:
+                    t = Todo.from_row(r)
+                    lines.append(f"- ✅ {t.title}")
+            else:
+                lines.append("今日暂无已完成待办")
+            conn.close()
+        except Exception:
+            lines.append("_无法获取待办数据_")
+        lines.append("")
+
+        # 2. 今日查询回顾
+        lines.append("### 🔍 今日问答")
+        try:
+            from knowledge_wiki.memory.db import get_db as memdb, init_schema as mem_init
+            conn = memdb()
+            mem_init(conn)
+            rows = conn.execute(
+                "SELECT summary FROM memory_events WHERE event_type='query' "
+                "AND created_at >= ? ORDER BY created_at DESC LIMIT 5",
+                [today_str],
+            ).fetchall()
+            if rows:
+                for r in rows:
+                    lines.append(f"- 🔍 {r['summary'][:80]}")
+            else:
+                lines.append("今日暂无问答记录")
+            conn.close()
+        except Exception:
+            lines.append("_无法获取问答数据_")
+        lines.append("")
+
+        # 3. 明日预览
+        tomorrow_str = (today + timedelta(days=1)).isoformat()
+        lines.append("### 📅 明日预览")
+        try:
+            from knowledge_wiki.assistant.db import get_db, init_schema
+            conn = get_db()
+            init_schema(conn)
+            tmrw = conn.execute(
+                "SELECT * FROM todos WHERE status='pending' AND deadline >= ? AND deadline < ? "
+                "ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END LIMIT 5",
+                [tomorrow_str, (today + timedelta(days=2)).isoformat()],
+            ).fetchall()
+            if tmrw:
+                from knowledge_wiki.assistant.models import Todo
+                for r in tmrw:
+                    t = Todo.from_row(r)
+                    icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(t.priority, "⚪")
+                    lines.append(f"- {icon} {t.title}")
+            else:
+                lines.append("暂无明日待办")
+            conn.close()
+        except Exception:
+            pass
+        lines.append("")
+
+        lines.append("---")
+        lines.append(f"*{datetime.now().strftime('%H:%M')} 自动生成 · 晚安！*")
+
+        brief = "\n".join(lines)
+        _push_to_user("system", brief[:3000])
+
+    except Exception as e:
+        _log.warning("[scheduler] 晚报生成失败: %s", e)
 
 
 def _push_to_user(user_id: str, content: str) -> bool:
@@ -266,18 +394,30 @@ def _job_git_retry():
 
 
 def _job_weekly_report():
-    """生成并推送周度自检报告（含自动摄取建议）."""
+    """生成并推送周度自检报告（含自动摄取建议 + 自动摄取周期）."""
     try:
         from knowledge_wiki.evolve.reporter import weekly_report
-        from knowledge_wiki.evolve.auto_ingest import suggest_markdown
+        from knowledge_wiki.evolve.auto_ingest import suggest_markdown, auto_ingest_scheduled
 
         report = weekly_report()
+
+        # 执行闭环自动摄取（安全阈值控制）
+        auto_result = ""
+        try:
+            auto_result = auto_ingest_scheduled()
+        except Exception as e:
+            _log.warning("自动摄取周期失败: %s", e)
+
         suggestions = suggest_markdown()
 
-        # 合并报告和建议
-        full = report + "\n\n" + suggestions
+        # 合并：报告 + 自动摄取结果 + 建议
+        parts = [report]
+        if auto_result:
+            parts.append(auto_result)
+        parts.append(suggestions)
+        full = "\n\n".join(parts)
         _push_to_user("system", full[:3000])
-        _log.info("[scheduler] 周报已推送")
+        _log.info("[scheduler] 周报已推送（含自动摄取）")
     except Exception as e:
         _log.warning("[scheduler] 周报生成失败: %s", e)
 
@@ -323,7 +463,7 @@ def _job_sync_reminders():
 
 
 def _job_deadline_scan():
-    """待办到期扫描."""
+    """待办到期扫描 — 检测即将到期的待办并推送通知."""
     try:
         from knowledge_wiki.assistant.db import get_db
         from datetime import datetime, timedelta
@@ -331,14 +471,188 @@ def _job_deadline_scan():
         soon = (datetime.now() + timedelta(hours=1)).isoformat()
         now = datetime.now().isoformat()
         rows = conn.execute(
-            "SELECT COUNT(*) FROM todos WHERE status='pending' AND deadline BETWEEN ? AND ?",
+            "SELECT * FROM todos WHERE status='pending' AND deadline BETWEEN ? AND ? "
+            "ORDER BY deadline",
             [now, soon],
-        ).fetchone()
-        if rows and rows[0] > 0:
-            _log.info("[scheduler] %d 个待办即将到期", rows[0])
+        ).fetchall()
         conn.close()
+
+        if rows:
+            from knowledge_wiki.assistant.models import Todo
+            urgent = [Todo.from_row(r) for r in rows]
+            # 构建推送消息
+            msg_lines = [f"⏰ **{len(urgent)} 个待办即将到期**", ""]
+            for t in urgent:
+                dl = t.deadline[:16] if t.deadline else "?"
+                priority_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(t.priority, "")
+                msg_lines.append(f"- {priority_icon} {t.title}（{dl}）")
+            msg_lines.append("")
+            msg_lines.append("回复「待办」查看全部。")
+
+            msg = "\n".join(msg_lines)
+            _push_to_user("system", msg)
+            _log.info("[scheduler] 推送 %d 个到期待办", len(urgent))
     except Exception as e:
         _log.warning("[scheduler] 待办扫描失败: %s", e)
+
+
+# ---- 早报/晚报板块生成辅助函数 ----
+
+
+def _get_todo_section(today_str: str) -> list[str]:
+    """生成今日待办板块."""
+    try:
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        from knowledge_wiki.assistant.models import Todo
+        conn = get_db()
+        init_schema(conn)
+        rows = conn.execute(
+            "SELECT * FROM todos WHERE status='pending' "
+            "AND (deadline >= ? OR deadline IS NULL) "
+            "ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, "
+            "deadline LIMIT 8",
+            [today_str],
+        ).fetchall()
+        conn.close()
+
+        if not rows:
+            return ["暂无待办，美好的一天！"]
+        icon_map = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+        result = []
+        for r in rows:
+            t = Todo.from_row(r)
+            icon = icon_map.get(t.priority, "⚪")
+            dl = f" ⏰{t.deadline[11:16]}" if t.deadline and len(t.deadline) > 11 else ""
+            result.append(f"- {icon} {t.title}{dl}")
+        return result
+    except Exception:
+        return ["_无法获取待办_"]
+
+
+def _get_reminder_section(today_str: str) -> list[str]:
+    """生成今日提醒板块."""
+    try:
+        from datetime import datetime, timedelta
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        from knowledge_wiki.assistant.models import Reminder
+        conn = get_db()
+        init_schema(conn)
+        tomorrow = (datetime.now().date() + timedelta(days=1)).isoformat()
+        rows = conn.execute(
+            "SELECT * FROM reminders WHERE status='active' "
+            "AND trigger_at BETWEEN ? AND ? ORDER BY trigger_at LIMIT 5",
+            [today_str, tomorrow],
+        ).fetchall()
+        conn.close()
+
+        if not rows:
+            return ["暂无提醒"]
+        result = []
+        for r in rows:
+            rem = Reminder.from_row(r)
+            time_str = rem.trigger_at[11:16] if len(rem.trigger_at) > 11 else ""
+            result.append(f"- ⏰ {time_str} {rem.content}")
+        return result
+    except Exception:
+        return ["_无法获取提醒_"]
+
+
+def _get_habit_section() -> list[str]:
+    """生成习惯打卡板块."""
+    try:
+        from knowledge_wiki.assistant.db import get_db, init_schema
+        conn = get_db()
+        init_schema(conn)
+        rows = conn.execute(
+            "SELECT * FROM habits WHERE status='active' ORDER BY streak DESC LIMIT 5"
+        ).fetchall()
+        conn.close()
+
+        if not rows:
+            return ["暂无习惯记录。回复「习惯 名称」开始追踪。"]
+        result = []
+        for r in rows:
+            name = r["name"] if "name" in r.keys() else str(r[1])
+            streak = r["streak"] if "streak" in r.keys() else 0
+            emoji = "🔥" if streak >= 7 else "⭐" if streak >= 3 else "🌱"
+            result.append(f"- {emoji} {name}（连续 {streak} 天）")
+        return result[:5]
+    except Exception:
+        return ["_暂无习惯数据_"]
+
+
+def _get_recent_notes_section(yesterday_str: str, today_str: str) -> list[str]:
+    """生成最近笔记板块."""
+    try:
+        from knowledge_wiki.memory.db import get_db as memdb, init_schema as mem_init
+        conn = memdb()
+        mem_init(conn)
+        rows = conn.execute(
+            "SELECT summary FROM memory_events WHERE event_type IN ('ingest', 'note') "
+            "AND created_at >= ? ORDER BY created_at DESC LIMIT 5",
+            [yesterday_str],
+        ).fetchall()
+        conn.close()
+
+        if not rows:
+            return ["最近无新笔记"]
+        result = []
+        for r in rows:
+            result.append(f"- 📄 {r['summary'][:80]}")
+        return result[:3]
+    except Exception:
+        return ["_无法获取笔记_"]
+
+
+def _get_wiki_activity_section() -> list[str]:
+    """生成知识库动态板块."""
+    try:
+        from knowledge_wiki.memory.reader import get_stats
+        stats = get_stats()
+        total = stats.get("total", 0)
+        last = stats.get("last_event_summary", "")
+        result = [f"- 总记录：{total} 条"]
+        if last:
+            result.append(f"- 最近：{last[:60]}")
+        return result
+    except Exception:
+        return ["_无法获取动态_"]
+
+
+def _get_insight_section() -> list[str]:
+    """生成 AI 洞察板块（基于用户活跃领域）."""
+    try:
+        from knowledge_wiki.memory.db import get_db as memdb, init_schema as mem_init
+        conn = memdb()
+        mem_init(conn)
+        # 统计最近 7 天最常查询的标签/领域
+        rows = conn.execute(
+            "SELECT tags FROM memory_events WHERE event_type='query' "
+            "AND created_at > date('now', '-7 days') LIMIT 50"
+        ).fetchall()
+        conn.close()
+
+        if not rows:
+            return ["本周暂无活跃查询，开始提问吧！"]
+
+        from collections import Counter
+        tag_count = Counter()
+        for r in rows:
+            tags_str = r["tags"] or ""
+            if tags_str:
+                for tag in tags_str.split(","):
+                    tag = tag.strip()
+                    if tag:
+                        tag_count[tag] += 1
+
+        if tag_count:
+            top_tags = tag_count.most_common(3)
+            topics = ", ".join(f"**{t}**" for t, _ in top_tags)
+            return [f"本周你主要关注 {topics} 领域"]
+        else:
+            return ["本周暂无活跃查询，开始提问吧！"]
+    except Exception:
+        return ["_无法生成洞察_"]
 
 
 def _job_fire_reminder(reminder_id: str, content: str, user_id: str = ""):

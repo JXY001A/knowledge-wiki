@@ -210,3 +210,159 @@ def suggest_markdown() -> str:
     lines.append("找到文章后可回复 `摄取 <URL>` 自动摄入。")
 
     return "\n".join(lines)
+
+
+# ============================================================================
+# 闭环自动摄取引擎
+# ============================================================================
+
+# 安全阈值
+MAX_AUTO_INGEST_PER_WEEK = 5
+AUTO_INGEST_TRACKER_FILE = settings.wiki_root / "wiki" / ".data" / "auto_ingest_log.json"
+
+
+def _load_auto_ingest_log() -> dict:
+    """加载自动摄取日志（跟踪每周摄取次数）."""
+    import json
+    if AUTO_INGEST_TRACKER_FILE.exists():
+        try:
+            return json.loads(AUTO_INGEST_TRACKER_FILE.read_text())
+        except Exception:
+            pass
+    return {"week_start": "", "count": 0, "ingested": []}
+
+
+def _save_auto_ingest_log(log: dict) -> None:
+    """保存自动摄取日志."""
+    import json
+    AUTO_INGEST_TRACKER_FILE.parent.mkdir(parents=True, exist_ok=True)
+    AUTO_INGEST_TRACKER_FILE.write_text(json.dumps(log, ensure_ascii=False, indent=2))
+
+
+def _reset_weekly_counter(log: dict) -> dict:
+    """重置每周计数器（新的一周）."""
+    from datetime import datetime, timedelta
+    today = datetime.now().date()
+    # 周一作为新周开始
+    monday = (today - timedelta(days=today.weekday())).isoformat()
+    if log.get("week_start") != monday:
+        log["week_start"] = monday
+        log["count"] = 0
+    return log
+
+
+def run_auto_ingest_cycle(dry_run: bool = False) -> dict:
+    """执行一次闭环自动摄取周期.
+
+    流程：
+    1. 检测反复出现的知识缺口（出现 3+ 次）
+    2. 搜索相关文章
+    3. 自动摄取（安全阈值内）
+    4. 推送通知
+
+    Args:
+        dry_run: True 时只返回计划，不执行实际摄取
+
+    Returns:
+        {"ingested": [...], "skipped": [...], "message": "..."}
+    """
+    from knowledge_wiki.evolve.gap_detector import get_recurring_gaps
+
+    # 1. 检测反复缺口
+    recurring = get_recurring_gaps(min_occurrences=3, days=30)
+    if not recurring:
+        return {"ingested": [], "skipped": [], "message": "未发现反复出现的知识缺口。"}
+
+    # 2. 加载周计数
+    log = _reset_weekly_counter(_load_auto_ingest_log())
+    remaining = MAX_AUTO_INGEST_PER_WEEK - log["count"]
+
+    result = {"ingested": [], "skipped": [], "message": ""}
+
+    if remaining <= 0:
+        result["message"] = f"本周自动摄取已达上限（{MAX_AUTO_INGEST_PER_WEEK} 篇），以下缺口将转为建议："
+        for g in recurring[:5]:
+            result["skipped"].append({"topic": g["topic"], "count": g["count"]})
+        return result
+
+    # 3. 逐个处理缺口
+    for gap in recurring[:remaining]:
+        topic = gap["topic"]
+        _log.info("自动摄取缺口: %s (出现 %d 次)", topic, gap["count"])
+
+        if dry_run:
+            result["ingested"].append({"topic": topic, "status": "dry_run"})
+            continue
+
+        # 搜索文章
+        search_results = search_gap_topics([topic], max_per_topic=2)
+        if not search_results:
+            result["skipped"].append({"topic": topic, "reason": "搜索无结果"})
+            continue
+
+        # 尝试摄取第一个 URL
+        ingested = False
+        for sr in search_results:
+            if not sr.url:
+                continue
+            ingest_result = auto_ingest_topic(topic, sr.url)
+            if "✅" in ingest_result:
+                log["count"] += 1
+                from datetime import datetime as dt_now
+                log["ingested"].append({
+                    "topic": topic,
+                    "url": sr.url,
+                    "result": ingest_result,
+                    "time": dt_now.now().isoformat(),
+                })
+                result["ingested"].append({"topic": topic, "url": sr.url, "result": ingest_result})
+                ingested = True
+                break
+            else:
+                _log.warning("摄取失败: %s → %s", topic, ingest_result)
+
+        if not ingested:
+            result["skipped"].append({"topic": topic, "reason": "所有 URL 摄取失败"})
+
+    _save_auto_ingest_log(log)
+
+    # 4. 生成摘要消息
+    parts = []
+    if result["ingested"]:
+        parts.append(f"✅ 自动摄取 {len(result['ingested'])} 篇：")
+        for item in result["ingested"]:
+            parts.append(f"  - {item.get('topic', '?')}")
+    if result["skipped"]:
+        parts.append(f"⏭️ 跳过 {len(result['skipped'])} 个缺口：")
+        for item in result["skipped"][:3]:
+            parts.append(f"  - {item.get('topic', '?')}（{item.get('reason', '?')}）")
+    result["message"] = "\n".join(parts) if parts else "无操作"
+
+    return result
+
+
+def auto_ingest_scheduled() -> str:
+    """定时调用的自动摄取入口（每周日 10:00 触发，scheduler 已集成）.
+
+    Returns:
+        推送消息文本
+    """
+    result = run_auto_ingest_cycle(dry_run=False)
+
+    if not result["ingested"] and not result["skipped"]:
+        return result.get("message", "")
+
+    lines = ["## 🤖 自动知识补充报告", ""]
+    if result["ingested"]:
+        lines.append(f"### ✅ 已自动摄入（{len(result['ingested'])} 篇）")
+        for item in result["ingested"]:
+            lines.append(f"- {item.get('topic', '?')}")
+        lines.append("")
+    if result["skipped"]:
+        lines.append(f"### ⏭️ 跳过（{len(result['skipped'])} 个）")
+        for item in result["skipped"][:5]:
+            lines.append(f"- {item.get('topic', '?')}：{item.get('reason', '建议手动处理')}")
+        lines.append("")
+    lines.append("回复「摄取建议」查看完整列表。")
+
+    return "\n".join(lines)

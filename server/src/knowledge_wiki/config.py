@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
 
+    # LLM 模型选择（统一配置，避免各模块硬编码）
+    ollama_model_query: str = "qwen2.5:3b"      # 知识问答
+    ollama_model_classify: str = "llama3.2:1b"   # 意图分类（小模型快）
+    deepseek_model_ingest: str = "deepseek-v4-pro"  # 内容摄取（高质量）
+    deepseek_model_eval: str = "deepseek-chat"   # 回答评估
+
     # Retrieval v2 — 新检索流水线开关（False 时回退旧实现）
     use_new_retrieval: bool = True
 

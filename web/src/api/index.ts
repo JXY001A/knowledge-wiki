@@ -20,7 +20,7 @@ async function del(url: string): Promise<void> {
 
 export const api = {
   getDashboard: () => get<DashboardData>('/admin/data'),
-  sendMessage: (text: string) => post<{ reply: string }>('/chat', { text }),
+  sendMessage: (text: string, conversationId?: string) => post<{ reply: string }>('/chat', { text, conversation_id: conversationId || '' }),
 
   listConvs: () => get<ConvItem[]>('/chat/convs'),
   getConv: (id: string) => get<ConvDetail>(`/chat/convs/${id}`),

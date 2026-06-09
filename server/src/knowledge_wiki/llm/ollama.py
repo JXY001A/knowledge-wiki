@@ -1,35 +1,48 @@
-"""Ollama API 客户端 — 本地模型调用（qwen2.5:3b, llama3.2:1b）."""
+"""Ollama API 客户端 — 本地模型调用."""
 
 import json
+import time
+import logging
 from knowledge_wiki.config import settings
 from knowledge_wiki.llm.base import extract_json, repair_json
+
+_log = logging.getLogger(__name__)
 
 OLLAMA_CHAT_URL = f"{settings.ollama_base_url}/api/chat"
 
 
 def _call_ollama(model: str, messages: list[dict], num_predict: int = 600,
-                 temperature: float = 0.1, timeout: int = 60) -> str | None:
-    """通用 Ollama chat API 调用."""
+                 temperature: float = 0.1, timeout: int = 60,
+                 max_retries: int = 2) -> str | None:
+    """通用 Ollama chat API 调用，带指数退避重试."""
     import urllib.request
 
-    try:
-        body = json.dumps({
-            "model": model,
-            "messages": messages,
-            "stream": False,
-            "options": {"num_predict": num_predict, "temperature": temperature},
-        }).encode()
+    for attempt in range(max_retries + 1):
+        try:
+            body = json.dumps({
+                "model": model,
+                "messages": messages,
+                "stream": False,
+                "options": {"num_predict": num_predict, "temperature": temperature},
+            }).encode()
 
-        req = urllib.request.Request(
-            OLLAMA_CHAT_URL,
-            data=body,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            content = json.loads(resp.read()).get("message", {}).get("content", "").strip()
-            return content if content else None
-    except Exception:
-        return None
+            req = urllib.request.Request(
+                OLLAMA_CHAT_URL,
+                data=body,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                content = json.loads(resp.read()).get("message", {}).get("content", "").strip()
+                return content if content else None
+        except Exception as e:
+            if attempt < max_retries:
+                delay = 1.5 ** attempt
+                _log.warning("Ollama call failed (attempt %d/%d): %s — retrying in %.1fs",
+                             attempt + 1, max_retries + 1, e, delay)
+                time.sleep(delay)
+            else:
+                _log.error("Ollama call failed after %d attempts: %s", max_retries + 1, e)
+                return None
 
 
 def call_json(question: str, context: str) -> dict | None:
@@ -50,7 +63,7 @@ def call_json(question: str, context: str) -> dict | None:
     )
 
     raw = _call_ollama(
-        model="qwen2.5:3b",
+        model=settings.ollama_model_query,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": f"[Wiki]\n{context}\n\n[Q]\n{question}"},
@@ -91,7 +104,7 @@ def call_json(question: str, context: str) -> dict | None:
 def call_short(question: str, context: str) -> str | None:
     """调用 qwen2.5:3b 生成一句话摘要."""
     return _call_ollama(
-        model="qwen2.5:3b",
+        model=settings.ollama_model_query,
         messages=[
             {"role": "system", "content": "Answer in ONE short Chinese sentence based on the wiki content. No formatting."},
             {"role": "user", "content": f"Wiki:\n{context[:2000]}\n\nQ: {question}"},
@@ -105,7 +118,7 @@ def call_short(question: str, context: str) -> str | None:
 def call_detailed(question: str, context: str, num_predict: int = 1500) -> str | None:
     """调用 qwen2.5:3b 生成详细 markdown 回答."""
     return _call_ollama(
-        model="qwen2.5:3b",
+        model=settings.ollama_model_query,
         messages=[
             {"role": "system", "content": (
                 "用中文回答，详细但不过于啰嗦\n"
@@ -128,7 +141,7 @@ def call_detailed(question: str, context: str, num_predict: int = 1500) -> str |
 def call_fallback(question: str, context: str) -> str | None:
     """调用 llama3.2:1b 作为最终回退."""
     return _call_ollama(
-        model="llama3.2:1b",
+        model=settings.ollama_model_classify,
         messages=[
             {"role": "system", "content": "Answer based on the wiki content. Be concise. Chinese."},
             {"role": "user", "content": f"Wiki:\n{context[:1500]}\n\nQ: {question}"},

@@ -103,13 +103,31 @@ def create_app() -> Flask:
     # 聊天 API
     @app.route("/chat", methods=["POST"])
     def chat_api():
-        """Web 端聊天 API — 复用 process_message 引擎."""
+        """Web 端聊天 API — 复用 process_message 引擎，支持多轮对话."""
         from knowledge_wiki.webhook.process import process_message, is_url
 
         data = request.get_json()
         text = data.get("text", "").strip()
+        conv_id = data.get("conversation_id", "")
         if not text:
             return jsonify({"reply": "请输入内容", "history": []})
+
+        # 加载历史对话（最近 10 轮）
+        history = []
+        if conv_id:
+            try:
+                from knowledge_wiki.assistant.db import get_db, init_schema
+                conn = get_db()
+                init_schema(conn)
+                rows = conn.execute(
+                    "SELECT role, content FROM conversation_messages "
+                    "WHERE conv_id=? ORDER BY created_at DESC LIMIT 20",
+                    [conv_id]
+                ).fetchall()
+                conn.close()
+                history = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+            except Exception:
+                pass
 
         replies = []
 
@@ -119,13 +137,13 @@ def create_app() -> Flask:
         def noop(*a, **kw):
             pass
 
-        # URL 摄取耗时 30-60s（下载 + LLM + git push），浏览器 fetch 会超时
-        # 改为后台线程处理，立即返回"处理中"状态
+        # URL 摄取耗时 30-60s, 后台线程处理
         if is_url(text):
             import threading
             threading.Thread(
                 target=process_message,
                 args=("web_user", text, collect_reply, noop),
+                kwargs={"history": history},
                 daemon=True,
             ).start()
             return jsonify({
@@ -133,9 +151,8 @@ def create_app() -> Flask:
                 "history": [],
             })
 
-        process_message("web_user", text, collect_reply, noop)
+        process_message("web_user", text, collect_reply, noop, history=history)
 
-        # 返回最后一条 send_md 消息（而非第一条），确保完整结果被展示
         return jsonify({
             "reply": replies[-1] if replies else "处理完成",
             "history": [],

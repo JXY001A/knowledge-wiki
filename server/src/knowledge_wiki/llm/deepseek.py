@@ -1,12 +1,16 @@
 """DeepSeek API 客户端 — ingest 内容分析."""
 
 import json
-import os
 import re
+import time
+import logging
+from knowledge_wiki.config import settings
 from knowledge_wiki.llm.base import extract_json
 
+_log = logging.getLogger(__name__)
+
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
-DEEPSEEK_MODEL = "deepseek-v4-pro"
+DEEPSEEK_MODEL = settings.deepseek_model_ingest
 
 INGEST_SYSTEM_PROMPT = (
     "你是知识库管理助手。阅读网页内容，输出结构化 JSON 用于生成 wiki 页面。\n\n"
@@ -33,43 +37,50 @@ INGEST_SYSTEM_PROMPT = (
 )
 
 
-def get_api_key() -> str:
-    """获取 DeepSeek API key."""
-    return os.environ.get("DEEPSEEK_API_KEY", "")
-
-
 def call_ingest(content: str, url: str = "") -> dict | None:
-    """调用 DeepSeek API 分析内容，返回结构化 wiki 数据."""
-    api_key = get_api_key()
+    """调用 DeepSeek API 分析内容，返回结构化 wiki 数据（带重试）."""
+    api_key = settings.deepseek_api_key
     if not api_key:
-        print("[llm] DEEPSEEK_API_KEY not set", flush=True)
+        _log.warning("DEEPSEEK_API_KEY not set")
         return None
 
     import urllib.request
 
-    try:
-        body = json.dumps({
-            "model": DEEPSEEK_MODEL,
-            "messages": [
-                {"role": "system", "content": INGEST_SYSTEM_PROMPT},
-                {"role": "user", "content": content[:40000]},
-            ],
-            "stream": False,
-            "temperature": 0.1,
-            "max_tokens": 4096,
-        }).encode()
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        try:
+            body = json.dumps({
+                "model": DEEPSEEK_MODEL,
+                "messages": [
+                    {"role": "system", "content": INGEST_SYSTEM_PROMPT},
+                    {"role": "user", "content": content[:40000]},
+                ],
+                "stream": False,
+                "temperature": 0.1,
+                "max_tokens": 4096,
+            }).encode()
 
-        req = urllib.request.Request(
-            DEEPSEEK_API_URL,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read())
-            raw_content = result["choices"][0]["message"]["content"]
+            req = urllib.request.Request(
+                DEEPSEEK_API_URL,
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                result = json.loads(resp.read())
+                raw_content = result["choices"][0]["message"]["content"]
+            break  # success
+        except Exception as e:
+            if attempt < max_retries:
+                delay = 2.0 ** attempt
+                _log.warning("DeepSeek call failed (attempt %d/%d): %s — retrying in %.1fs",
+                             attempt + 1, max_retries + 1, e, delay)
+                time.sleep(delay)
+            else:
+                _log.error("DeepSeek call failed after %d attempts: %s", max_retries + 1, e)
+                return None
 
         if not raw_content or not raw_content.strip():
             print("[llm] DeepSeek ingest: empty response", flush=True)

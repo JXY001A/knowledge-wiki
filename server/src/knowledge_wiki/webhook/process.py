@@ -161,14 +161,23 @@ def handle_inbox_text(user_id: str, text: str, send_md):
     send_md(user_id, f"已保存到知识库\n\n> 文件：`{filepath.relative_to(WIKI_ROOT)}`\n> 可在 Obsidian 或 MCP 中处理 ingest")
 
 
-def process_message(user_id: str, text: str, send_md, send_tpl):
-    """处理收到的消息 — 通过 Skill 引擎路由分发."""
+def process_message(user_id: str, text: str, send_md, send_tpl,
+                   history: list[dict] | None = None):
+    """处理收到的消息 — 通过 Skill 引擎路由分发.
+
+    Args:
+        user_id: 用户标识
+        text: 消息文本
+        send_md: markdown 回复回调
+        send_tpl: 模板消息回调
+        history: 最近对话历史 [{"role":"user"/"bot","content":"..."}]
+    """
     from knowledge_wiki.skill.engine import match_skill
     from knowledge_wiki.skill.planner import execute_skill
 
     try:
         stripped = text.strip()
-        _debug(f"IN user={user_id} text={stripped[:120]}")
+        _debug(f"IN user={user_id} text={stripped[:120]} hist={len(history) if history else 0}")
 
         def _wrapped_send_md(uid, txt):
             ctx["_handled"] = True
@@ -179,6 +188,7 @@ def process_message(user_id: str, text: str, send_md, send_tpl):
             "input_text": stripped,
             "send_md": _wrapped_send_md,
             "send_tpl": send_tpl,
+            "history": history or [],
         }
 
         skill = None
@@ -210,7 +220,8 @@ def process_message(user_id: str, text: str, send_md, send_tpl):
             elif is_url(stripped):
                 execute_skill("ingest-article", ctx)
             else:
-                execute_skill("save-note", ctx)
+                # 默认走知识库查询；查询无结果时 skill 本身会降级处理
+                execute_skill("query-knowledge", ctx)
         else:
             result = execute_skill(skill.name, ctx)
             _debug(f"result_len={len(result) if result else 0} handled={ctx.get('_handled')}")

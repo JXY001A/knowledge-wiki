@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeSanitize from 'rehype-sanitize';
+import remarkGfm from 'remark-gfm';
 import { api } from '../api';
 import type { ConvItem, ConvMsg } from '../types';
 
@@ -27,7 +30,7 @@ export default function Chat() {
     const updated = [...messages, userMsg];
     setMessages(updated);
     try {
-      const { reply } = await api.sendMessage(text);
+      const { reply } = await api.sendMessage(text, activeId || undefined);
       const botMsg: ConvMsg = { role: 'bot', text: reply, time: new Date().toLocaleTimeString() };
       const final = [...updated, botMsg];
       setMessages(final);
@@ -84,7 +87,11 @@ export default function Chat() {
                   {m.role === 'user' ? 'J' : '🤖'}
                 </div>
                 <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-blue-50 rounded-br-md' : 'bg-white border border-slate-200 rounded-bl-md'}`}>
-                  <div dangerouslySetInnerHTML={{ __html: m.text.replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') }} />
+                  <div className="prose prose-sm max-w-none prose-headings:text-slate-700 prose-a:text-blue-600 prose-code:text-rose-600 prose-code:bg-slate-100 prose-code:px-1 prose-code:rounded prose-pre:bg-slate-900 prose-pre:text-slate-100 prose-ul:list-disc prose-ol:list-decimal prose-table:border-collapse">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                      {m.text}
+                    </ReactMarkdown>
+                  </div>
                   <div className="text-[10px] text-slate-400 mt-1">{m.time}</div>
                 </div>
               </div>

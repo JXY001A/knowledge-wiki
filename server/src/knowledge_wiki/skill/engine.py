@@ -194,7 +194,7 @@ def classify_intent_llm(text: str) -> str | None:
 
     try:
         body = json.dumps({
-            "model": "qwen2.5:3b",
+            "model": settings.ollama_model_classify,
             "messages": [
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": text},
@@ -248,7 +248,7 @@ def classify_todo_action(text: str) -> dict:
 
     try:
         body = json.dumps({
-            "model": "qwen2.5:3b",
+            "model": settings.ollama_model_query,
             "messages": [
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": text},

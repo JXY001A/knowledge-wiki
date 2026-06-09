@@ -37,6 +37,17 @@ def execute(context: dict) -> str:
     except Exception:
         memory_context = ""
 
+    # 0.5 注入对话历史（多轮对话上下文）
+    history = context.get("history", [])
+    history_text = ""
+    if history:
+        parts = []
+        for m in history[-10:]:  # 最近 10 轮
+            role = "用户" if m.get("role") == "user" else "助手"
+            content = m.get("content", "")[:300]
+            parts.append(f"{role}：{content}")
+        history_text = "## 对话历史\n" + "\n".join(parts) + "\n\n"
+
     # 1. 新检索流水线（catalog → BM25 → layered）——直接调用，不经过 MCP
     try:
         wiki_context = run_pipeline(question)
@@ -50,11 +61,14 @@ def execute(context: dict) -> str:
             send_md(user_id, "知识库查询失败，请重试。")
         return ""
 
-    # 2. qwen2.5:3b markdown 格式化（注入记忆上下文）
-    full_context = wiki_context
+    # 2. LLM 格式化回答（注入对话历史 + 记忆上下文）
+    # 检索管线三层组装预算 8000 token ≈ 16000 字符
+    # 按 LLM 上下文窗口动态分配，而非硬截断
+    full_context = history_text + wiki_context
     if memory_context:
-        full_context = memory_context + "\n---\n" + wiki_context
-    answer = call_detailed(question, full_context[:3000])
+        full_context = memory_context + "\n---\n" + full_context
+    max_ctx = min(len(full_context), 12000)  # qwen2.5:3b 支持 32K，留 20K 给回答
+    answer = call_detailed(question, full_context[:max_ctx])
     if not answer:
         answer = wiki_context[:2800]
 

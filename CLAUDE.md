@@ -23,18 +23,25 @@ git diff --staged --quiet || git commit -m "ingest/lint/query: <简要描述>" &
 
 ## 代码结构
 
-Python 项目代码位于 `src/knowledge_wiki/`，按模块组织：
-
-| 模块 | 职责 |
-|------|------|
-| `src/knowledge_wiki/wiki/` | 共享 wiki 操作：git、frontmatter、搜索、页面构建、日志 |
-| `src/knowledge_wiki/llm/` | LLM 客户端：DeepSeek API + Ollama |
-| `src/knowledge_wiki/mcp/` | MCP 服务端 + 客户端 + 工具实现 |
-| `src/knowledge_wiki/webhook/` | 企业微信 Bot：消息接收、处理、回复 |
-| `src/knowledge_wiki/skill/` | Agent 技能系统：注册表、加载引擎、规划器、路由 |
-| `skills/` | 文件系统技能注册表（每个 skill 一个目录） |
-| `deploy/` | systemd 单元 + 部署脚本 |
-| `tests/` | pytest 测试套件 |
+```
+knowledge-wiki/
+├── agent/skills/              # 🤖 智能体技能（每个 skill 一个目录）
+├── server/src/knowledge_wiki/ # 🖥️ Python 服务端包
+│   ├── wiki/                  # 共享 wiki 操作：git、frontmatter、搜索、页面构建、日志
+│   ├── llm/                   # LLM 客户端：DeepSeek API + Ollama
+│   ├── mcp/                   # MCP 服务端 + 客户端 + 工具实现
+│   ├── webhook/               # 企业微信 Bot：消息接收、处理、回复
+│   ├── skill/                 # Agent 技能引擎：注册表、路由、规划器
+│   ├── memory/                # 记忆系统：事件记录、搜索、用户画像
+│   ├── assistant/             # 个人助理：待办、提醒、笔记、书签、习惯
+│   ├── eval/                  # 评估引擎：DeepSeek 评分
+│   └── evolve/                # 自进化：缺口检测、自动摄取、报告
+├── web/                       # 🌐 React SPA 前端
+├── wiki/                      # 📚 知识库 Markdown 页面
+├── raw/                       # 📄 不可变原始资料
+├── deploy/                    # systemd 单元 + 部署脚本
+└── tests/                     # pytest 测试套件
+```
 
 ### 本地开发
 

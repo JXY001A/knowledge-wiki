@@ -8,7 +8,7 @@ ExecStart=/usr/bin/sg audio -c \"/home/jxy001a1/code/knowledge-wiki/.venv/bin/py
 WorkingDirectory=/home/jxy001a1/code/knowledge-wiki
 Restart=always
 RestartSec=5
-Environment="PYTHONPATH=/home/jxy001a1/code/knowledge-wiki/src"
+Environment="PYTHONPATH=/home/jxy001a1/code/knowledge-wiki/server/src"
 EnvironmentFile=/home/jxy001a1/code/knowledge-wiki/.env
 
 [Install]

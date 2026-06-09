@@ -102,11 +102,11 @@ build-backend = "setuptools.build_meta"
 # PEP 621 的 [project] 无法表达的 setuptools 特有配置都放在这里。
 [tool.setuptools.packages.find]
 
-# 指定从 src/ 目录下自动发现 Python 包（而非项目根目录）。
+# 指定从 server/src/ 目录下自动发现 Python 包（而非项目根目录）。
 # 这是 "src layout" 的标准实践：
-#   - 源码隔离在 src/ 下，避免意外导入未安装的包
+#   - 源码隔离在 server/src/ 下，避免意外导入未安装的包
 #   - 确保测试运行时使用的是安装后的包，而非源码目录
-where = ["src"]
+where = ["server/src"]
 
 
 # ============================================================================
@@ -122,4 +122,4 @@ testpaths = ["tests"]
 
 # 将 src/ 添加到 sys.path。这样测试文件中 import 项目模块时
 # 无需手动 sys.path.insert，直接 from knowledge_wiki.xxx import yyy 即可。
-pythonpath = ["src"]
+pythonpath = ["server/src"]

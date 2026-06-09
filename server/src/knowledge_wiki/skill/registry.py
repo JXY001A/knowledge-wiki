@@ -98,7 +98,7 @@ def skills_dir() -> Path:
     Returns:
         Path 对象，指向 skills/ 目录（可能不存在）
     """
-    return settings.wiki_root / "skills"
+    return settings.wiki_root / "agent" / "skills"
 
 
 def list_skills() -> list[Skill]:

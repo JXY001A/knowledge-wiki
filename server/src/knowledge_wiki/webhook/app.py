@@ -17,7 +17,7 @@ def create_app() -> Flask:
     app = Flask(__name__, static_folder=None)
 
     # React 静态文件目录
-    REACT_DIST = Path(__file__).parent.parent.parent.parent / "web" / "build"
+    REACT_DIST = Path(__file__).parent.parent.parent.parent.parent / "web" / "build"
 
     def serve_react(path=""):
         """SPA fallback: 非 API 路径返回 React index.html."""

@@ -73,7 +73,7 @@ def _get_page_text(path: Path) -> str:
     return text.strip()
 
 
-def _call_ollama_embed(text: str, retries: int = 2) -> list[float] | None:
+def _call_ollama_embed(text: str, retries: int = 1) -> list[float] | None:
     """调用 Ollama embedding API 生成向量（带指数退避重试）.
 
     Args:
@@ -232,11 +232,16 @@ def build_embedding_index(
         if rel_path in index.hashes and index.hashes[rel_path] == content_hash:
             continue
 
-        # 生成向量
+        # 生成向量（重试 1 次，单次失败约 1s）
         text = _get_page_text(md_path)
         vec = _call_ollama_embed(text)
         if vec is None:
-            _log.warning("跳过 %s（embedding 生成失败）", rel_path)
+            # 标记为已尝试但失败，避免每次查询都重试
+            # 存储空向量 + hash 标记，下次增量跳过
+            index.vectors[rel_path] = []  # 空向量 = 失败标记
+            index.titles[rel_path] = md_path.stem
+            index.hashes[rel_path] = content_hash
+            _log.warning("跳过 %s（embedding 生成失败，已标记避免重试）", rel_path)
             continue
 
         # 更新索引
@@ -244,6 +249,10 @@ def build_embedding_index(
         index.titles[rel_path] = md_path.stem
         index.hashes[rel_path] = content_hash
         new_count += 1
+
+        # 每 10 个页面保存一次（避免全部丢失+增量可见）
+        if new_count % 10 == 0:
+            save_embedding_index(index)
 
     # 清理已删除的文件
     valid_paths = {str(f.relative_to(settings.wiki_root)) for f in md_files}
@@ -329,9 +338,11 @@ def semantic_search(
     if q_vec is None:
         return []
 
-    # 计算所有文档的余弦相似度
+    # 计算所有文档的余弦相似度（跳过空向量 = 生成失败的页面）
     scores = []
     for path, doc_vec in index.vectors.items():
+        if not doc_vec:  # 空向量 = embedding 失败标记，跳过
+            continue
         sim = cosine_similarity(q_vec, doc_vec)
         if sim > 0:
             title = index.titles.get(path, Path(path).stem)

@@ -394,12 +394,13 @@ def create_app() -> Flask:
             conn.execute("INSERT INTO conversations (id,title,user_id,channel,created_at,updated_at) VALUES (?,?,?,?,?,?)",
                          [conv_id, title, "web_user", "web", now_iso(), now_iso()])
 
-        # Replace messages
+        # Replace messages (兼容前端 text 和后端 content 字段名)
         conn.execute("DELETE FROM conversation_messages WHERE conv_id=?", [conv_id])
         for m in messages:
             mid = uuid7()
+            msg_content = m.get("content") or m.get("text", "")
             conn.execute("INSERT INTO conversation_messages (id,conv_id,role,content,created_at) VALUES (?,?,?,?,?)",
-                         [mid, conv_id, m["role"], m["content"], m.get("time", now_iso())])
+                         [mid, conv_id, m["role"], msg_content, m.get("time", now_iso())])
 
         conn.commit()
         conn.close()

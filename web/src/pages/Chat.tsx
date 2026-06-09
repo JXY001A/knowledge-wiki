@@ -62,28 +62,32 @@ export default function Chat() {
 
   const streamCtrl = useRef<AbortController | null>(null);
 
-  async function send() {
-    const text = input.trim(); if (!text || sending) return;
+  // 发送消息（支持直接传文本参数，避免 setState 异步问题）
+  async function send(presetText?: string) {
+    const text = (presetText || input).trim(); if (!text || sending) return;
     setInput(''); setSending(true);
     const now = new Date().toLocaleTimeString();
     const userMsg: ConvMsg = { role: 'user', text, time: now };
-    // 初始化空的 bot 消息（用于流式填充）
-    const botMsg: ConvMsg = { role: 'bot', text: '', time: now };
+    const placeholder = '  '; // 占位符，保证消息气泡可见
+    const botMsg: ConvMsg = { role: 'bot', text: placeholder, time: '' };
     const updated = [...messages, userMsg, botMsg];
     setMessages(updated);
 
     const botIndex = updated.length - 1;
+    let firstToken = true;
 
     // 获取流式回复
     const ctrl = api.streamMessage(
       text,
       activeId,
-      // onToken — 逐字追加
+      // onToken — 逐字追加（首次替换占位符）
       (token) => {
         setMessages(prev => {
           const next = [...prev];
           if (next[botIndex]) {
-            next[botIndex] = { ...next[botIndex], text: next[botIndex].text + token };
+            const cur = firstToken ? '' : next[botIndex].text;
+            firstToken = false;
+            next[botIndex] = { ...next[botIndex], text: cur + token, time: new Date().toLocaleTimeString() };
           }
           return next;
         });
@@ -91,12 +95,14 @@ export default function Chat() {
       // onDone — 流完成，保存会话
       (fullText) => {
         setSending(false);
-        const finalMessages = [...updated];
-        finalMessages[botIndex] = { ...finalMessages[botIndex], text: fullText, time: new Date().toLocaleTimeString() };
-        setMessages(finalMessages);
+        setMessages(prev => {
+          const next = [...prev];
+          next[botIndex] = { ...next[botIndex], text: fullText, time: new Date().toLocaleTimeString() };
+          return next;
+        });
         // 保存到 DB
         const title = activeId ? undefined : text.slice(0, 30);
-        api.saveConv({ id: activeId || undefined, title: title || '新对话', messages: finalMessages })
+        api.saveConv({ id: activeId || undefined, title: title || '新对话', messages: [...updated.slice(0, -1), { role: 'bot' as const, text: fullText, time: new Date().toLocaleTimeString() }] })
           .then(({ id }) => { if (!activeId) setActiveId(id); api.listConvs().then(setConvs); })
           .catch(() => {});
       },
@@ -105,7 +111,7 @@ export default function Chat() {
         setSending(false);
         setMessages(prev => {
           const next = [...prev];
-          next[botIndex] = { ...next[botIndex], text: next[botIndex].text || `错误: ${err}`, time: new Date().toLocaleTimeString() };
+          next[botIndex] = { ...next[botIndex], text: `❌ ${err}`, time: new Date().toLocaleTimeString() };
           return next;
         });
       },
@@ -113,10 +119,14 @@ export default function Chat() {
     streamCtrl.current = ctrl;
   }
 
-  async function newChat() { setActiveId(null); setMessages([]); }
-  async function deleteConv() { if (!activeId) return; await api.deleteConv(activeId); setActiveId(null); setMessages([]); api.listConvs().then(setConvs); }
+  async function newChat() {
+    streamCtrl.current?.abort();  // 取消进行中的流
+    setActiveId(null); setMessages([]); setSending(false);
+  }
+  async function deleteConv() { if (!activeId) return; streamCtrl.current?.abort(); await api.deleteConv(activeId); setActiveId(null); setMessages([]); api.listConvs().then(setConvs); }
 
   function onKey(e: React.KeyboardEvent) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
+  function quickSend(label: string) { send(label.slice(2)); }
 
   return (
     <div className="flex h-[calc(100vh-56px)]">
@@ -151,7 +161,7 @@ export default function Chat() {
                 <p className="text-sm text-slate-400 mb-6">知识查询、待办管理、定时提醒、笔记记录</p>
                 <div className="flex flex-wrap gap-2 justify-center">
                   {['📋 查看待办', '🔍 知识查询', '📅 今日日程', '✅ 创建待办', '⏰ 设置提醒', '📋 今日早报'].map(h => (
-                    <button key={h} onClick={() => { setInput(h.slice(2)); send(); }}
+                    <button key={h} onClick={() => quickSend(h)}
                       className="bg-white border border-slate-200 rounded-full px-4 py-2 text-sm hover:border-blue-300 hover:text-blue-600">{h}</button>
                   ))}
                 </div>
@@ -163,11 +173,19 @@ export default function Chat() {
                   {m.role === 'user' ? 'J' : '🤖'}
                 </div>
                 <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-blue-50 rounded-br-md' : 'bg-white border border-slate-200 rounded-bl-md'}`}>
-                  <div className="prose prose-sm max-w-none prose-headings:text-slate-700 prose-a:text-blue-600 prose-code:text-rose-600 prose-code:bg-slate-100 prose-code:px-1 prose-code:rounded prose-pre:bg-slate-900 prose-pre:text-slate-100 prose-ul:list-disc prose-ol:list-decimal prose-table:border-collapse">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                      {m.text}
-                    </ReactMarkdown>
-                  </div>
+                  {m.role === 'bot' && m.text.trim() === '' ? (
+                    <div className="flex items-center gap-1 text-slate-400 py-1">
+                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  ) : (
+                    <div className="prose prose-sm max-w-none prose-headings:text-slate-700 prose-a:text-blue-600 prose-code:text-rose-600 prose-code:bg-slate-100 prose-code:px-1 prose-code:rounded prose-pre:bg-slate-900 prose-pre:text-slate-100 prose-ul:list-disc prose-ol:list-decimal prose-table:border-collapse">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                        {m.text}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mt-1">
                     <span className="text-[10px] text-slate-400">{m.time}</span>
                     {m.role === 'bot' && m.text && (
@@ -197,11 +215,11 @@ export default function Chat() {
               title="语音输入">
               🎤
             </button>
-            <button onClick={send} disabled={sending}
+            <button onClick={() => send()} disabled={sending}
               className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">发送</button>
           </div>
           <div className="text-center text-[11px] text-slate-400 mt-2">
-            {hints.map(h => <span key={h} onClick={() => { setInput(h); send(); }} className="cursor-pointer hover:text-blue-500 mx-1">{h}</span>)}
+            {hints.map(h => <span key={h} onClick={() => quickSend(h)} className="cursor-pointer hover:text-blue-500 mx-1">{h}</span>)}
           </div>
         </div>
       </div>

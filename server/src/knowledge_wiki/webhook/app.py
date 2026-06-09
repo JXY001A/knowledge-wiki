@@ -153,8 +153,37 @@ def create_app() -> Flask:
 
         process_message("web_user", text, collect_reply, noop, history=history)
 
+        reply = replies[-1] if replies else "处理完成"
+
+        # 保存用户消息 + 助手回复到 DB（多轮对话历史持久化）
+        if conv_id and reply:
+            try:
+                from knowledge_wiki.assistant.db import get_db, init_schema
+                from knowledge_wiki.memory.models import uuid7, now_iso
+                conn = get_db()
+                init_schema(conn)
+                # 保存用户消息
+                conn.execute(
+                    "INSERT INTO conversation_messages (id,conv_id,role,content,created_at) VALUES (?,?,?,?,?)",
+                    [uuid7(), conv_id, "user", text[:2000], now_iso()],
+                )
+                # 保存助手回复
+                conn.execute(
+                    "INSERT INTO conversation_messages (id,conv_id,role,content,created_at) VALUES (?,?,?,?,?)",
+                    [uuid7(), conv_id, "bot", reply[:3000], now_iso()],
+                )
+                # 更新会话时间
+                conn.execute(
+                    "UPDATE conversations SET updated_at=? WHERE id=?",
+                    [now_iso(), conv_id],
+                )
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+
         return jsonify({
-            "reply": replies[-1] if replies else "处理完成",
+            "reply": reply,
             "history": [],
         })
 

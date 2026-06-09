@@ -5,6 +5,6 @@
   "tier": 1,
   "model": "local",
   "tools": ["search"],
-  "triggers": ["搜索", "查找", "search", "find", "有哪些", "找一下"],
+  "triggers": ["搜索", "查找", "search", "find", "找一下"],
   "dependencies": []
 }

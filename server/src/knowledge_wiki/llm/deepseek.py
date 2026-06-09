@@ -82,34 +82,30 @@ def call_ingest(content: str, url: str = "") -> dict | None:
                 _log.error("DeepSeek call failed after %d attempts: %s", max_retries + 1, e)
                 return None
 
-        if not raw_content or not raw_content.strip():
-            print("[llm] DeepSeek ingest: empty response", flush=True)
-            return None
-
-        # Save debug output
-        try:
-            with open("/tmp/llm_debug.txt", "w") as f:
-                f.write(raw_content)
-        except Exception:
-            pass
-
-        json_str = extract_json(raw_content)
-        if not json_str:
-            print(f"[llm] DeepSeek ingest: no JSON in {raw_content[:200]}", flush=True)
-            return None
-
-        parsed = json.loads(json_str)
-        print(f"[llm] DeepSeek ingest OK: {parsed.get('title', '?')}", flush=True)
-        return parsed
-
-    except Exception as e:
-        print(f"[llm] DeepSeek API failed: {e}", flush=True)
+    if not raw_content or not raw_content.strip():
+        _log.warning("DeepSeek ingest: empty response")
         return None
+
+    # Save debug output
+    try:
+        with open("/tmp/llm_debug.txt", "w") as f:
+            f.write(raw_content)
+    except Exception:
+        pass
+
+    json_str = extract_json(raw_content)
+    if not json_str:
+        _log.warning("DeepSeek ingest: no JSON in %s", raw_content[:200])
+        return None
+
+    parsed = json.loads(json_str)
+    _log.info("DeepSeek ingest OK: %s", parsed.get("title", "?"))
+    return parsed
 
 
 def call_summarize(content: str, max_tokens: int = 1024) -> str | None:
     """调用 DeepSeek API 生成简短摘要."""
-    api_key = get_api_key()
+    api_key = settings.deepseek_api_key
     if not api_key:
         return None
 

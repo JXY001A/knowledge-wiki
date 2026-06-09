@@ -103,6 +103,59 @@ def call_ingest(content: str, url: str = "") -> dict | None:
     return parsed
 
 
+def stream_deepseek(model: str, messages: list[dict], max_tokens: int = 2048,
+                     temperature: float = 0.3, timeout: int = 120):
+    """DeepSeek 流式调用 — 逐 token 生成.
+
+    Yields:
+        每个 chunk 的 content 字符串
+    """
+    api_key = settings.deepseek_api_key
+    if not api_key:
+        _log.warning("DEEPSEEK_API_KEY not set, stream unavailable")
+        yield ""
+        return
+
+    import urllib.request
+
+    try:
+        body = json.dumps({
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }).encode()
+
+        req = urllib.request.Request(
+            DEEPSEEK_API_URL,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            for line in resp:
+                line = line.decode("utf-8", errors="ignore").strip()
+                if not line or not line.startswith("data: "):
+                    continue
+                data_str = line[6:]  # strip "data: " prefix
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+                except json.JSONDecodeError:
+                    continue
+    except Exception as e:
+        _log.warning("DeepSeek stream failed: %s", e)
+        yield ""
+
+
 def call_summarize(content: str, max_tokens: int = 1024) -> str | None:
     """调用 DeepSeek API 生成简短摘要."""
     api_key = settings.deepseek_api_key

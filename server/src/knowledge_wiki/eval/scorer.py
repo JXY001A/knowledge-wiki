@@ -141,7 +141,7 @@ def evaluate_answer(question: str, answer: str, wiki_context: str = "") -> EvalR
 
 def evaluate_and_record(question: str, answer: str, wiki_context: str = "",
                         user_id: str = "") -> EvalResult | None:
-    """评估并记录到 memory_events.score.
+    """评估并记录到 memory_events.score，并触发反馈动作.
 
     Args:
         question: 用户问题
@@ -196,7 +196,94 @@ def evaluate_and_record(question: str, answer: str, wiki_context: str = "",
     except Exception as e:
         _log.warning("eval record failed: %s", e)
 
+    # 质量反馈动作
+    _feedback_actions(question, result, user_id)
+
     return result
+
+
+def _feedback_actions(question: str, result: "EvalResult", user_id: str) -> None:
+    """根据评估结果触发反馈动作.
+
+    触发条件：
+    - 单次 score ≤ 2 → 推送通知"刚才回答质量不高"
+    - 同领域连续 3 次 ≤ 3 → 自动触发 auto_ingest
+    """
+    try:
+        # 低分通知
+        if result.overall <= 2 and user_id and user_id != "system":
+            _push_low_score_notification(question, result, user_id)
+
+        # 连续低分检测
+        if result.overall <= 3:
+            _check_consecutive_low_scores(result.gaps)
+    except Exception:
+        pass
+
+
+def _push_low_score_notification(question: str, result: "EvalResult", user_id: str) -> None:
+    """推送低分通知给用户."""
+    try:
+        msg = (
+            f"📊 **回答质量评估**\n\n"
+            f"> 问题：{question[:80]}\n"
+            f"> 评分：{result.stars}（准确{result.accuracy} 完整{result.completeness} 有用{result.usefulness}）\n\n"
+        )
+        if result.gaps:
+            msg += f"🔍 知识缺口：{', '.join(result.gaps[:3])}\n\n"
+        if result.improvement:
+            msg += f"💡 {result.improvement[:100]}\n\n"
+        msg += "发送 `摄取建议` 查看如何补全知识。"
+
+        # 通过企微推送
+        try:
+            from knowledge_wiki.webhook.wechat.api import send_markdown
+            send_markdown(user_id, msg)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _check_consecutive_low_scores(gaps: list[str]) -> None:
+    """检测同一领域是否连续低分，触发自动摄取."""
+    try:
+        from knowledge_wiki.memory.db import get_db, init_schema
+        conn = get_db()
+        init_schema(conn)
+
+        # 最近 10 次评估
+        rows = conn.execute(
+            "SELECT score, details FROM memory_events WHERE score IS NOT NULL "
+            "ORDER BY created_at DESC LIMIT 10"
+        ).fetchall()
+        conn.close()
+
+        if len(rows) < 3:
+            return
+
+        low_count = 0
+        for r in rows:
+            if r["score"] is not None and r["score"] <= 3:
+                low_count += 1
+            else:
+                break  # 只算连续
+
+        if low_count >= 3:
+            import logging
+            _log = logging.getLogger(__name__)
+            _log.info("连续 %d 次低分评估，建议触发自动摄取", low_count)
+            # 异步触发 auto_ingest
+            try:
+                import threading
+                def _trigger():
+                    from knowledge_wiki.evolve.auto_ingest import run_auto_ingest_cycle
+                    run_auto_ingest_cycle(dry_run=False)
+                threading.Thread(target=_trigger, daemon=True).start()
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def get_eval_stats() -> dict:

@@ -10,6 +10,48 @@ _log = logging.getLogger(__name__)
 
 OLLAMA_CHAT_URL = f"{settings.ollama_base_url}/api/chat"
 
+# ---- 流式调用 ----
+
+def stream_ollama(model: str, messages: list[dict], num_predict: int = 600,
+                   temperature: float = 0.1, timeout: int = 120):
+    """Ollama 流式调用 — 逐 token 生成.
+
+    Yields:
+        每个 chunk 的 content 字符串
+    """
+    import urllib.request
+
+    try:
+        body = json.dumps({
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "options": {"num_predict": num_predict, "temperature": temperature},
+        }).encode()
+
+        req = urllib.request.Request(
+            OLLAMA_CHAT_URL,
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            for line in resp:
+                line = line.decode("utf-8", errors="ignore").strip()
+                if not line:
+                    continue
+                try:
+                    chunk = json.loads(line)
+                    content = chunk.get("message", {}).get("content", "")
+                    if content:
+                        yield content
+                    if chunk.get("done", False):
+                        break
+                except json.JSONDecodeError:
+                    continue
+    except Exception as e:
+        _log.warning("Ollama stream failed: %s", e)
+        yield ""
+
 
 def _call_ollama(model: str, messages: list[dict], num_predict: int = 600,
                  temperature: float = 0.1, timeout: int = 60,

@@ -13,8 +13,45 @@ export default function Chat() {
   const [messages, setMessages] = useState<ConvMsg[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [speaking, setSpeaking] = useState<number | null>(null);  // 正在朗读的消息索引
+  const [listening, setListening] = useState(false);  // 语音输入中
   const sidebarOpen = true;
   const chatEnd = useRef<HTMLDivElement>(null);
+
+  // 语音合成 — 朗读 bot 消息
+  function speakMessage(index: number, text: string) {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    if (speaking === index) { setSpeaking(null); return; }
+    // 清理 Markdown 语法后再朗读
+    const cleanText = text.replace(/[#*`\[\]|>_-]/g, ' ').replace(/\s+/g, ' ').trim();
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = 'zh-CN';
+    utterance.rate = 1.1;
+    utterance.onend = () => setSpeaking(null);
+    utterance.onerror = () => setSpeaking(null);
+    setSpeaking(index);
+    window.speechSynthesis.speak(utterance);
+  }
+
+  // 语音输入 — 浏览器 SpeechRecognition
+  function startListening() {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (event: any) => {
+      const text = event.results[0][0].transcript;
+      setInput(text);
+      setListening(false);
+    };
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => setListening(false);
+    setListening(true);
+    recognition.start();
+  }
 
   useEffect(() => { api.listConvs().then(setConvs).catch(() => {}); }, []);
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -23,23 +60,57 @@ export default function Chat() {
     try { const c = await api.getConv(id); setActiveId(id); setMessages(c.messages); } catch {}
   }
 
+  const streamCtrl = useRef<AbortController | null>(null);
+
   async function send() {
     const text = input.trim(); if (!text || sending) return;
     setInput(''); setSending(true);
-    const userMsg: ConvMsg = { role: 'user', text, time: new Date().toLocaleTimeString() };
-    const updated = [...messages, userMsg];
+    const now = new Date().toLocaleTimeString();
+    const userMsg: ConvMsg = { role: 'user', text, time: now };
+    // 初始化空的 bot 消息（用于流式填充）
+    const botMsg: ConvMsg = { role: 'bot', text: '', time: now };
+    const updated = [...messages, userMsg, botMsg];
     setMessages(updated);
-    try {
-      const { reply } = await api.sendMessage(text, activeId || undefined);
-      const botMsg: ConvMsg = { role: 'bot', text: reply, time: new Date().toLocaleTimeString() };
-      const final = [...updated, botMsg];
-      setMessages(final);
-      const title = activeId ? undefined : text.slice(0, 30);
-      const { id } = await api.saveConv({ id: activeId || undefined, title: title || '新对话', messages: final });
-      if (!activeId) setActiveId(id);
-      api.listConvs().then(setConvs);
-    } catch { setMessages(prev => [...prev, { role: 'bot', text: '网络错误', time: new Date().toLocaleTimeString() }]); }
-    setSending(false);
+
+    const botIndex = updated.length - 1;
+
+    // 获取流式回复
+    const ctrl = api.streamMessage(
+      text,
+      activeId,
+      // onToken — 逐字追加
+      (token) => {
+        setMessages(prev => {
+          const next = [...prev];
+          if (next[botIndex]) {
+            next[botIndex] = { ...next[botIndex], text: next[botIndex].text + token };
+          }
+          return next;
+        });
+      },
+      // onDone — 流完成，保存会话
+      (fullText) => {
+        setSending(false);
+        const finalMessages = [...updated];
+        finalMessages[botIndex] = { ...finalMessages[botIndex], text: fullText, time: new Date().toLocaleTimeString() };
+        setMessages(finalMessages);
+        // 保存到 DB
+        const title = activeId ? undefined : text.slice(0, 30);
+        api.saveConv({ id: activeId || undefined, title: title || '新对话', messages: finalMessages })
+          .then(({ id }) => { if (!activeId) setActiveId(id); api.listConvs().then(setConvs); })
+          .catch(() => {});
+      },
+      // onError
+      (err) => {
+        setSending(false);
+        setMessages(prev => {
+          const next = [...prev];
+          next[botIndex] = { ...next[botIndex], text: next[botIndex].text || `错误: ${err}`, time: new Date().toLocaleTimeString() };
+          return next;
+        });
+      },
+    );
+    streamCtrl.current = ctrl;
   }
 
   async function newChat() { setActiveId(null); setMessages([]); }
@@ -57,8 +128,13 @@ export default function Chat() {
           {convs.map(c => (
             <div key={c.id} onClick={() => loadConv(c.id)}
               className={`px-3 py-2.5 rounded-lg cursor-pointer text-sm mb-0.5 ${c.id === activeId ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50'}`}>
-              <div className="font-medium truncate">{c.title || '新对话'}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">{c.updated_at?.slice(0, 10)}</div>
+              <div className="font-medium truncate flex items-center gap-1">
+                {c.title || '新对话'}
+                {c.channel && c.channel !== 'web' && (
+                  <span className="text-[10px] bg-green-50 text-green-600 px-1 rounded">{c.channel === 'wecom' ? '💬' : '🔧'}</span>
+                )}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">{c.updated_at?.slice(0, 10)}{c.channel && c.channel !== 'web' ? ` · ${c.channel}` : ''}</div>
             </div>
           ))}
           {convs.length === 0 && <p className="text-xs text-slate-400 text-center py-8">暂无历史对话</p>}
@@ -92,7 +168,18 @@ export default function Chat() {
                       {m.text}
                     </ReactMarkdown>
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-1">{m.time}</div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-[10px] text-slate-400">{m.time}</span>
+                    {m.role === 'bot' && m.text && (
+                      <button
+                        onClick={() => speakMessage(i, m.text)}
+                        className={`text-xs px-2 py-0.5 rounded transition ${speaking === i ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}
+                        title={speaking === i ? '停止朗读' : '朗读'}
+                      >
+                        {speaking === i ? '🔊' : '🔈'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -103,8 +190,13 @@ export default function Chat() {
         <div className="border-t border-slate-200 bg-white p-3">
           <div className="max-w-2xl mx-auto flex gap-2">
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey}
-              placeholder="输入消息，Enter 发送" disabled={sending}
+              placeholder={listening ? '正在聆听...' : '输入消息，Enter 发送'} disabled={sending}
               className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50" />
+            <button onClick={startListening} disabled={listening}
+              className={`px-3 py-2.5 rounded-xl text-sm border transition ${listening ? 'bg-red-50 border-red-300 text-red-600 animate-pulse' : 'border-slate-200 hover:bg-slate-50'}`}
+              title="语音输入">
+              🎤
+            </button>
             <button onClick={send} disabled={sending}
               className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">发送</button>
           </div>

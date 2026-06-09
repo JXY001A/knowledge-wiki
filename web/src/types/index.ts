@@ -43,6 +43,6 @@ export interface DashboardData {
   quality: QualityPanel;
 }
 
-export interface ConvItem { id: string; title: string; updated_at: string }
+export interface ConvItem { id: string; title: string; updated_at: string; channel?: string }
 export interface ConvMsg { role: 'user' | 'bot'; text: string; time: string }
 export interface ConvDetail { id: string; title: string; messages: ConvMsg[] }

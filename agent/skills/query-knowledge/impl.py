@@ -46,6 +46,13 @@ def execute(context: dict) -> str:
     except Exception:
         memory_context = ""
 
+    # 0.3 注入用户画像（活跃领域、专业程度）
+    profile_text = ""
+    try:
+        profile_text = _build_profile_prefix(user_id) if user_id else ""
+    except Exception:
+        pass
+
     # 0.5 注入对话历史
     history = context.get("history", [])
     history_text = ""
@@ -79,9 +86,9 @@ def execute(context: dict) -> str:
 
     # 3. 选择回答模型和策略
     if is_gap:
-        answer = _generate_gap_answer(question, wiki_context, history_text, memory_context, user_id)
+        answer = _generate_gap_answer(question, wiki_context, history_text, memory_context, profile_text, user_id)
     else:
-        answer = _generate_wiki_answer(question, wiki_context, history_text, memory_context)
+        answer = _generate_wiki_answer(question, wiki_context, history_text, memory_context, profile_text)
 
     # 4. 如果所有回答都失败，用原始 wiki 内容兜底
     if not answer:
@@ -108,14 +115,15 @@ def execute(context: dict) -> str:
 
 
 def _generate_wiki_answer(question: str, wiki_context: str,
-                           history_text: str, memory_context: str) -> str | None:
+                           history_text: str, memory_context: str,
+                           profile_text: str = "") -> str | None:
     """基于 wiki 资料生成带引用的回答。
 
     使用多级路由：
     - 上下文 < 1500 字符 → 本地 Ollama（qwen2.5:3b，快速）
     - 上下文 ≥ 1500 字符 → DeepSeek（质量更高，支持引用标注）
     """
-    full_context = history_text + wiki_context
+    full_context = profile_text + history_text + wiki_context
     if memory_context:
         full_context = memory_context + "\n---\n" + full_context
     max_ctx = min(len(full_context), 12000)
@@ -132,7 +140,7 @@ def _generate_wiki_answer(question: str, wiki_context: str,
 
 def _generate_gap_answer(question: str, wiki_context: str,
                           history_text: str, memory_context: str,
-                          user_id: str) -> str | None:
+                          profile_text: str, user_id: str) -> str | None:
     """知识库无覆盖时的兜底回答。
 
     策略：
@@ -199,6 +207,31 @@ def _record_gap(question: str, score: float, user_id: str) -> None:
         conn.close()
     except Exception:
         pass
+
+
+def _build_profile_prefix(user_id: str) -> str:
+    """构建用户画像前缀（注入到 LLM 上下文前）."""
+    try:
+        from knowledge_wiki.memory.profile import build_profile
+        profile = build_profile()
+        if profile.get("status") != "ok" or profile.get("total", 0) < 5:
+            return ""
+
+        top_domains = profile.get("top_domains", {})
+        if not top_domains:
+            return ""
+
+        # 提取 top-3 领域
+        domains = list(top_domains.keys())[:3]
+        avg_score = profile.get("avg_score")
+        level = "熟练" if avg_score and avg_score >= 4 else "进阶" if avg_score and avg_score >= 3 else "入门"
+
+        return (
+            f"## 用户画像\n"
+            f"用户活跃领域：{', '.join(domains)}。专业程度：{level}。\n\n"
+        )
+    except Exception:
+        return ""
 
 
 DEEPSEEK_GENERAL_PROMPT = """你是个人知识库助手。用户的问题在当前知识库中没有直接覆盖的资料。

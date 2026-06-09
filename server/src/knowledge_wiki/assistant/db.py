@@ -167,10 +167,15 @@ CREATE INDEX IF NOT EXISTS idx_conv_msgs ON conversation_messages(conv_id, creat
 CREATE INDEX IF NOT EXISTS idx_convs_user ON conversations(user_id, updated_at DESC);
 """
 
+SCHEMA_V4 = """
+ALTER TABLE conversations ADD COLUMN channel TEXT DEFAULT 'web';
+"""
+
 MIGRATIONS = [
     (1, SCHEMA_V1, "初始 schema：todos/reminders/notes/bookmarks/habits/habit_logs/push_queue"),
     (2, SCHEMA_V2, "reminders 表添加 user_id 列（主动推送需要）"),
     (3, SCHEMA_V3, "conversations + conversation_messages 表（Web 聊天历史持久化）"),
+    (4, SCHEMA_V4, "conversations 表添加 channel 列（多渠道统一会话）"),
 ]
 
 

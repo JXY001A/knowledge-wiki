@@ -104,7 +104,7 @@ def create_app() -> Flask:
     @app.route("/chat", methods=["POST"])
     def chat_api():
         """Web 端聊天 API — 复用 process_message 引擎."""
-        from knowledge_wiki.webhook.process import process_message
+        from knowledge_wiki.webhook.process import process_message, is_url
 
         data = request.get_json()
         text = data.get("text", "").strip()
@@ -119,10 +119,25 @@ def create_app() -> Flask:
         def noop(*a, **kw):
             pass
 
+        # URL 摄取耗时 30-60s（下载 + LLM + git push），浏览器 fetch 会超时
+        # 改为后台线程处理，立即返回"处理中"状态
+        if is_url(text):
+            import threading
+            threading.Thread(
+                target=process_message,
+                args=("web_user", text, collect_reply, noop),
+                daemon=True,
+            ).start()
+            return jsonify({
+                "reply": "正在提取并分析链接内容...\n\n处理完成后会显示结果（可发送新消息刷新查看）",
+                "history": [],
+            })
+
         process_message("web_user", text, collect_reply, noop)
 
+        # 返回最后一条 send_md 消息（而非第一条），确保完整结果被展示
         return jsonify({
-            "reply": replies[0] if replies else "处理完成",
+            "reply": replies[-1] if replies else "处理完成",
             "history": [],
         })
 

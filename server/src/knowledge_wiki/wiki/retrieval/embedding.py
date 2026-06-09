@@ -149,6 +149,38 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 # 索引构建与搜索
 # ============================================================================
 
+# 模型可用性缓存（避免每次查询都尝试无效的 API 调用）
+_embed_model_available: bool | None = None
+_embed_model_checked_at: float = 0.0
+
+
+def _check_embed_model_available() -> bool:
+    """检查 embedding 模型是否在 Ollama 中可用（缓存 30 分钟）."""
+    global _embed_model_available, _embed_model_checked_at
+    import time as _time
+    now = _time.time()
+    if _embed_model_available is not None and (now - _embed_model_checked_at) < 1800:
+        return _embed_model_available
+
+    try:
+        import json, urllib.request
+        resp = urllib.request.urlopen(
+            f"{settings.ollama_base_url}/api/tags", timeout=5
+        )
+        data = json.loads(resp.read())
+        models = [m.get("name", "") for m in data.get("models", [])]
+        # 检查是否有任何 embedding 模型
+        embed_models = [m for m in models if "embed" in m.lower() or "bge" in m.lower() or "nomic" in m.lower()]
+        _embed_model_available = len(embed_models) > 0
+        if not _embed_model_available:
+            _log.warning("未检测到 embedding 模型（nomic-embed-text/bge-*），语义检索禁用。运行: ollama pull nomic-embed-text")
+    except Exception as e:
+        _log.warning("无法检查 Ollama embedding 模型: %s", e)
+        _embed_model_available = False
+    _embed_model_checked_at = now
+    return _embed_model_available
+
+
 def build_embedding_index(
     wiki_dir: Path | None = None,
     force: bool = False,
@@ -160,10 +192,14 @@ def build_embedding_index(
         force: 强制全量重建（忽略增量）
 
     Returns:
-        EmbeddingIndex 或 None（Ollama 不可用时）
+        EmbeddingIndex 或 None（Ollama 不可用或模型未安装）
     """
     from datetime import datetime, timezone
     from hashlib import sha256
+
+    # 快速失败：模型不可用时直接返回 None
+    if not _check_embed_model_available():
+        return None
 
     if wiki_dir is None:
         wiki_dir = settings.wiki_root / "wiki"

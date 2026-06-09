@@ -50,8 +50,8 @@ class RetrievalConfig:
     })
 
     # ---- Embedding 语义检索 ----
-    # 是否启用语义检索（需 Ollama embedding 模型可用）
-    embedding_enabled: bool = True
+    # 是否启用语义检索（需 Ollama embedding 模型可用，如 nomic-embed-text）
+    embedding_enabled: bool = False
     # 语义检索返回 Top-K
     embedding_top_k: int = 20
     # RRF 平滑参数（越大越倾向召回更多结果）

@@ -436,7 +436,15 @@ def _exec_set_reminder(args: dict, user_id: str, send_md) -> str:
 
     # threading.Timer 推送
     try:
-        from agent.skills.remind_set.impl import _schedule_push
+        exec_fn = _load_skill_func("remind-set")
+        if exec_fn:
+            from knowledge_wiki.skill.planner import load_skill_impl
+            # use the scheduler's own push mechanism
+        try:
+            from knowledge_wiki.assistant.scheduler import add_reminder_job
+            add_reminder_job(r.id, content, trigger_at, user_id)
+        except Exception:
+            pass
         _schedule_push(r.id, content, trigger_at, user_id)
     except ImportError:
         pass
@@ -450,6 +458,25 @@ def _exec_set_reminder(args: dict, user_id: str, send_md) -> str:
     return f"⏰ 已设置提醒\n**{content}**\n时间：{time_str}"
 
 
+def _load_skill_func(skill_name: str):
+    """动态加载 skill 的 execute 函数（复用 planner 的加载逻辑）."""
+    import importlib.util, sys
+    from pathlib import Path
+    skill_path = __import__("knowledge_wiki.config").config.settings.wiki_root / "agent" / "skills" / skill_name / "impl.py"
+    if not skill_path.exists():
+        return None
+    module_name = f"knowledge_wiki.skills.{skill_name}"
+    if module_name in sys.modules:
+        return getattr(sys.modules[module_name], "execute", None)
+    spec = importlib.util.spec_from_file_location(module_name, skill_path)
+    if not spec or not spec.loader:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = mod
+    spec.loader.exec_module(mod)
+    return getattr(mod, "execute", None)
+
+
 def _exec_ingest_url(args: dict, user_id: str, send_md) -> str:
     """摄取 URL."""
     url = args.get("url", "").strip()
@@ -457,24 +484,26 @@ def _exec_ingest_url(args: dict, user_id: str, send_md) -> str:
         return "请提供要摄取的 URL"
     # 复用现有 ingest-article 技能
     try:
-        ctx = {"user_id": user_id, "input_text": url, "send_md": send_md}
-        from agent.skills.ingest_article.impl import execute as ingest_exec
-        return ingest_exec(ctx)
-    except ImportError:
-        # Fallback: 直接调用 webhook processor
-        from knowledge_wiki.webhook.process import fetch_url_text
-        from knowledge_wiki.llm.deepseek import call_ingest
-        from knowledge_wiki.wiki.builder import build_source_page
-        from knowledge_wiki.wiki.git import commit_and_push
-        raw_text = fetch_url_text(url)
-        if not raw_text:
-            return f"❌ 无法下载 {url}"
-        llm_data = call_ingest(raw_text, url)
-        if not llm_data:
-            return f"❌ LLM 分析失败"
-        build_source_page(llm_data, url)
-        commit_and_push(f"ingest: {llm_data.get('title', url[:60])}")
-        return f"✅ 已摄取：**{llm_data.get('title', url[:60])}**\n{llm_data.get('summary', '')}"
+        exec_fn = _load_skill_func("ingest-article")
+        if exec_fn:
+            ctx = {"user_id": user_id, "input_text": url, "send_md": send_md}
+            return exec_fn(ctx) or "✅ 摄取完成"
+    except Exception:
+        pass
+    # Fallback: 直接调用 webhook processor
+    from knowledge_wiki.webhook.process import fetch_url_text
+    from knowledge_wiki.llm.deepseek import call_ingest
+    from knowledge_wiki.wiki.builder import build_source_page
+    from knowledge_wiki.wiki.git import commit_and_push
+    raw_text = fetch_url_text(url)
+    if not raw_text:
+        return f"❌ 无法下载 {url}"
+    llm_data = call_ingest(raw_text, url)
+    if not llm_data:
+        return f"❌ LLM 分析失败"
+    build_source_page(llm_data, url)
+    commit_and_push(f"ingest: {llm_data.get('title', url[:60])}")
+    return f"✅ 已摄取：**{llm_data.get('title', url[:60])}**\n{llm_data.get('summary', '')}"
 
 
 def _exec_quick_note(args: dict, user_id: str, send_md) -> str:
@@ -486,7 +515,7 @@ def _exec_quick_note(args: dict, user_id: str, send_md) -> str:
     from knowledge_wiki.assistant.models import Note
     conn = get_db()
     init_schema(conn)
-    n = Note(content=content[:2000], user_id=user_id or "system")
+    n = Note(content=content[:2000], source="llm_router" if not user_id else user_id)
     d = n.to_dict()
     cols = ", ".join(d.keys())
     ph = ", ".join("?" for _ in d)
@@ -506,7 +535,7 @@ def _exec_save_bookmark(args: dict, user_id: str, send_md) -> str:
     from knowledge_wiki.assistant.models import Bookmark
     conn = get_db()
     init_schema(conn)
-    b = Bookmark(url=url, title=title or url[:80], user_id=user_id or "system")
+    b = Bookmark(url=url, title=title or url[:80])
     d = b.to_dict()
     cols = ", ".join(d.keys())
     ph = ", ".join("?" for _ in d)
@@ -519,11 +548,34 @@ def _exec_save_bookmark(args: dict, user_id: str, send_md) -> str:
 def _exec_view_schedule(args: dict, user_id: str, send_md) -> str:
     """查看日程 — 桥接到 schedule-view skill."""
     try:
-        ctx = {"user_id": user_id, "input_text": "日程", "send_md": send_md}
-        from agent.skills.schedule_view.impl import execute as sched_exec
-        return sched_exec(ctx)
-    except ImportError:
-        return "日程功能暂不可用"
+        exec_fn = _load_skill_func("schedule-view")
+        if exec_fn:
+            ctx = {"user_id": user_id, "input_text": "日程", "send_md": send_md}
+            return exec_fn(ctx)
+    except Exception:
+        pass
+    # Fallback: 直接查询
+    from knowledge_wiki.assistant.db import get_db, init_schema
+    from datetime import datetime
+    conn = get_db()
+    init_schema(conn)
+    today = datetime.now().strftime("%Y-%m-%d")
+    rows = conn.execute(
+        "SELECT * FROM todos WHERE status='pending' ORDER BY "
+        "CASE WHEN deadline<? THEN 0 ELSE 1 END LIMIT 10",
+        [today],
+    ).fetchall()
+    conn.close()
+    if not rows:
+        return "📋 今天暂无待办和提醒。"
+    from knowledge_wiki.assistant.models import Todo
+    todos = [Todo.from_row(r) for r in rows]
+    lines = ["## 📅 今日日程", ""]
+    for t in todos:
+        icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(t.priority, "⚪")
+        extra = " ⚠️逾期" if t.deadline and t.deadline < today else ""
+        lines.append(f"- {icon} {t.title}{extra}")
+    return "\n".join(lines)
 
 
 def _exec_track_habit(args: dict, user_id: str, send_md) -> str:
@@ -592,15 +644,17 @@ def _exec_track_habit(args: dict, user_id: str, send_md) -> str:
 
 
 def _exec_generate_brief(args: dict, user_id: str, send_md) -> str:
-    """生成日报."""
+    """生成日报 — 桥接到 daily-brief skill."""
     try:
-        brief_type = args.get("type", "morning")
-        ctx = {"user_id": user_id, "input_text": "早报" if brief_type == "morning" else "晚报",
-               "send_md": send_md}
-        from agent.skills.daily_brief.impl import execute as brief_exec
-        return brief_exec(ctx)
-    except ImportError:
-        return "日报功能暂不可用"
+        exec_fn = _load_skill_func("daily-brief")
+        if exec_fn:
+            brief_type = args.get("type", "morning")
+            ctx = {"user_id": user_id, "input_text": "早报" if brief_type == "morning" else "晚报",
+                   "send_md": send_md}
+            return exec_fn(ctx)
+    except Exception:
+        pass
+    return "日报功能暂不可用"
 
 
 def _exec_speak_text(args: dict, user_id: str, send_md) -> str:
@@ -609,11 +663,13 @@ def _exec_speak_text(args: dict, user_id: str, send_md) -> str:
     if not text:
         return "请输入要朗读的内容"
     try:
-        ctx = {"user_id": user_id, "input_text": f"说 {text}", "send_md": send_md}
-        from agent.skills.speak_text.impl import execute as speak_exec
-        return speak_exec(ctx)
-    except ImportError:
-        return "语音功能暂不可用"
+        exec_fn = _load_skill_func("speak-text")
+        if exec_fn:
+            ctx = {"user_id": user_id, "input_text": f"说 {text}", "send_md": send_md}
+            return exec_fn(ctx)
+    except Exception:
+        pass
+    return "语音功能暂不可用"
 
 
 # ---------------------------------------------------------------------------

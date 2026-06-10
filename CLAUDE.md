@@ -21,6 +21,19 @@ git diff --staged --quiet || git commit -m "ingest/lint/query: <简要描述>" &
 
 此提交与 Stop 钩子互斥：本流程完成推送后仓库是干净的，Stop 钩子的 `git diff --staged --quiet` 检查会跳过，不会重复提交。
 
+## 图片解析
+
+当前模型（deepseek-v4-pro）**不支持原生多模态**，无法直接解析图片内容。当用户以任何形式发送图片（粘贴、拖拽、路径引用）时，**必须**调用 MCP vision 工具：
+
+```
+工具: vision.analyze_image
+参数: image_path = 图片的本地绝对路径
+```
+
+- 该工具通过 Ollama `qwen3-vl:8b` 解析图片，返回结构化文字描述
+- **不要**回复"无法解析图片"——先用 MCP 工具尝试
+- **不要**跳过——即使用户只贴了图没说话，也要解析出内容
+
 ## 代码结构
 
 ```

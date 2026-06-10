@@ -14,6 +14,7 @@
 
 import json
 import logging
+import re as _re_module
 import urllib.request
 from knowledge_wiki.config import settings
 from knowledge_wiki.skill.tools import TOOLS, ROUTER_SYSTEM_PROMPT, execute_tool
@@ -22,9 +23,120 @@ _log = logging.getLogger(__name__)
 
 DEEPSEEK_API = "https://api.deepseek.com/v1/chat/completions"
 
+# ---------------------------------------------------------------------------
+# 本地强信号路由 —— DeepSeek API 不可用时的快速通道
+# 每项: (关键词列表, 工具名, 默认参数)
+# 按列表顺序匹配，命中即停止
+# ---------------------------------------------------------------------------
+_LOCAL_ROUTES = [
+    # —— 待办查看 ——
+    (["查看待办", "待办列表", "我的待办", "有哪些待办", "列出待办", "待办事项",
+      "待办", "todo list", "my todos", "有什么待办"], "manage_todos", {"action": "list"}),
+    # —— 待办创建 ——
+    (["加到待办", "加入到待办", "添加到待办", "记一个待办", "创建待办", "新建待办",
+      "加一个待办", "弄到待办", "设为待办", "做待办", "建待办"], "manage_todos", {}),
+    # —— 提醒我 + 活动 → 待办（非 remind） ——
+    (["提醒我上班", "提醒我喝水", "提醒我开会", "提醒我提交", "提醒我完成",
+      "提醒我打卡", "提醒我买", "提醒我吃药"], "manage_todos", {}),
+    # —— 日程 ——
+    (["今天要做什么", "今天有什么", "明天要做什么", "我的日程", "日程安排",
+      "今天安排", "明天安排", "今日日程"], "view_schedule", {}),
+    # —— 日报 ——
+    (["早报", "晚报", "今日简报", "今天总结", "今日总结"], "generate_brief", {}),
+    # —— 习惯打卡 ——
+    (["打卡", "习惯打卡"], "track_habit", {"action": "stats"}),
+    # —— 笔记 ——
+    (["记一下", "记个笔记", "备忘", "闪念"], "quick_note", {}),
+    # —— 书签 ——
+    (["收藏链接", "收藏网址", "加个书签", "加书签"], "save_bookmark", {}),
+    # —— 说/播放 ——
+    (["说 ", "喊 ", "播放 ", "朗读 ", "speak ", "play "], "speak_text", {}),
+]
+
+
+def _match_local_route(text: str) -> tuple[str, dict] | None:
+    """本地强信号匹配 —— 按关键词匹配，返回 (tool_name, default_args) 或 None."""
+    for keywords, tool_name, default_args in _LOCAL_ROUTES:
+        for kw in keywords:
+            if kw in text:
+                _log.info("Local route matched: %s → %s", kw, tool_name)
+                return tool_name, dict(default_args)
+    return None
+
+
+def _enrich_args(text: str, tool_name: str, default_args: dict) -> dict:
+    """从文本中提取参数，补充到 default_args。
+
+    仅处理明确格式的命令，不猜测模糊意图。
+    """
+    args = dict(default_args)
+
+    if tool_name == "manage_todos":
+        if args.get("action") == "list":
+            return args  # list 无需额外参数
+        # create: 从"加到待办 xxx"中提取 title
+        triggers = ["加到待办", "加入到待办", "添加到待办", "记一个待办", "创建待办",
+                    "新建待办", "加一个待办", "弄到待办", "设为待办", "做待办", "建待办",
+                    "提醒我上班", "提醒我喝水", "提醒我开会", "提醒我提交", "提醒我完成",
+                    "提醒我打卡", "提醒我买", "提醒我吃药"]
+        for t in triggers:
+            if t in text:
+                idx = text.find(t)
+                suffix = text[idx + len(t):].strip()
+                # 去除前导标点
+                suffix = _re_module.sub(r'^[：:，,\s]+', '', suffix)
+                if suffix:
+                    args["action"] = "create"
+                    args["title"] = suffix[:80]
+                else:
+                    args["action"] = "create"  # 无 title 时由 exec 提示
+                return args
+        args["action"] = "create"
+        return args
+
+    elif tool_name == "quick_note":
+        triggers_note = ["记一下", "记个笔记", "备忘", "闪念"]
+        for t in triggers_note:
+            if t in text:
+                idx = text.find(t)
+                suffix = text[idx + len(t):].strip()
+                suffix = _re_module.sub(r'^[：:，,\s]+', '', suffix)
+                if suffix:
+                    args["content"] = suffix[:2000]
+                return args
+        return args
+
+    elif tool_name == "save_bookmark":
+        # 从"收藏链接 https://xxx"中提取 URL
+        url_match = _re_module.search(r'https?://[^\s]+', text)
+        if url_match:
+            args["url"] = url_match.group(0)
+        return args
+
+    elif tool_name == "speak_text":
+        triggers_speak = ["说 ", "喊 ", "播放 ", "朗读 ", "speak ", "play "]
+        for t in triggers_speak:
+            if text.startswith(t):
+                args["text"] = text[len(t):].strip()
+                return args
+            if t in text:
+                idx = text.find(t)
+                suffix = text[idx + len(t):].strip()
+                if suffix:
+                    args["text"] = suffix
+                return args
+        return args
+
+    return args
+
 
 def route_intent(text: str, context: dict) -> dict:
     """LLM 驱动意图路由 — 返回 {'type': 'tool_calls'|'chat', ...}
+
+    三层策略:
+      1. 本地强信号预检 —— 关键词命中直接路由（零 API 调用）
+      2. DeepSeek function-calling —— 复杂意图智能路由
+      3. 知识检索降级 —— 都失败时走知识库
 
     Args:
         text: 用户消息
@@ -37,6 +149,23 @@ def route_intent(text: str, context: dict) -> dict:
     history = context.get("history", [])
     user_id = context.get("user_id", "")
 
+    # ---- 第 0 层: 本地强信号快速通道 ----
+    local_hit = _match_local_route(text)
+    if local_hit:
+        tool_name, default_args = local_hit
+        # 尝试用 LLM 补充参数（如从文本中提取 title）
+        args = _enrich_args(text, tool_name, default_args)
+        try:
+            result_text = execute_tool(tool_name, args, context)
+            return {
+                "type": "tool_calls",
+                "calls": [{"name": tool_name, "args": args, "result": result_text}],
+                "reply": result_text,
+            }
+        except Exception as e:
+            _log.warning("Local route %s failed: %s, falling back to LLM", tool_name, e)
+            # 本地路由执行失败，继续走 LLM
+
     # 构建 messages
     messages = [{"role": "system", "content": ROUTER_SYSTEM_PROMPT}]
 
@@ -48,11 +177,11 @@ def route_intent(text: str, context: dict) -> dict:
 
     messages.append({"role": "user", "content": text})
 
-    # 调用 DeepSeek function-calling
+    # ---- 第 1 层: DeepSeek function-calling ----
     tool_calls = _call_function_calling(messages)
 
     if not tool_calls:
-        # 无工具调用 → 纯聊天或知识查询
+        # ---- 第 2 层: 知识检索降级 ----
         return _handle_chat(text, context, messages)
 
     # 有工具调用 → 逐个执行

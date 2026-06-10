@@ -330,6 +330,7 @@ def _wiki_page_list() -> list:
         upd_str = str(upd)[:10] if upd else ""
         by_dir[directory].append({
             "title": p["title"],
+            "path": path,
             "type": p["type"],
             "tags": p["tags"][:5] if isinstance(p.get("tags"), list) else [],
             "updated": upd_str,

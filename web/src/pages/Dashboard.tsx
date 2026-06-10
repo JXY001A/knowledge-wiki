@@ -3,13 +3,16 @@ import { usePolling } from '../hooks/usePolling';
 import { api } from '../api';
 import { StatCard } from '../components/StatCard';
 import { TrendChart, DoughnutCard } from '../components/ChartCard';
+import WikiPageViewer from '../components/WikiPageViewer';
+import TodoPanel from '../components/TodoPanel';
 import type { DashboardData } from '../types';
 
-const tabs = ['概览', 'Skills', '知识库', '操作日志', '质量'] as const;
+const tabs = ['概览', 'Skills', '知识库', '操作日志', '质量', '待办管理'] as const;
 
 export default function Dashboard() {
   const { data, loading } = usePolling<DashboardData>(api.getDashboard, 60);
   const [tab, setTab] = useState<typeof tabs[number]>('概览');
+  const [viewingPage, setViewingPage] = useState<string | null>(null);
   if (loading || !data) return <div className="text-center py-16 text-slate-400">加载中...</div>;
 
   const { overview: ov, eval_trend, wiki_growth, todos: td, memory_dist, gaps, skills, wiki_pages, query_log, server_status: ss, quality: q } = data;
@@ -27,7 +30,7 @@ export default function Dashboard() {
           <StatCard value={ov.wiki_pages.toString()} label="Wiki 页面" sub={`${ov.concepts} 概念`} onClick={() => setTab('知识库')} />
           <StatCard value={`⭐ ${ov.eval_avg}`} label="回答均分" sub={`${ov.eval_count} 次评估`} onClick={() => setTab('操作日志')} />
           <StatCard value={ov.memories.toString()} label="操作记忆" onClick={() => setTab('操作日志')} />
-          <StatCard value={`${done}/${ov.todos_total}`} label="待办完成" sub={`剩余 ${ov.todos_pending} 项`} onClick={() => setTab('Skills')} />
+          <StatCard value={`${done}/${ov.todos_total}`} label="待办完成" sub={`剩余 ${ov.todos_pending} 项`} onClick={() => setTab('待办管理')} />
         </div>
         <div className="grid md:grid-cols-2 gap-4 mb-4">
           <div className="bg-white border border-slate-200 rounded-xl p-4"><h3 className="text-xs text-slate-500 font-semibold mb-3 uppercase">📊 评估趋势</h3><TrendChart data={eval_trend} lines={[{ key: 'avg', color: '#3b82f6' }, { key: 'count', color: '#16a34a', yAxisId: 'y1' }]} /></div>
@@ -53,7 +56,7 @@ export default function Dashboard() {
 
       {tab === '知识库' && <div className="bg-white border border-slate-200 rounded-xl p-4">
         <div className="grid grid-cols-3 gap-2 mb-4 text-center"><StatCard value={wiki_pages.reduce((a, d) => a + d.count, 0).toString()} label="总页面" /><StatCard value={wiki_pages.length.toString()} label="目录数" /></div>
-        {wiki_pages.map(d => <div key={d.directory} className="mb-4"><h4 className="text-sm font-semibold text-blue-600 mb-2">📁 {d.directory} ({d.count})</h4><div className="flex flex-wrap gap-1.5">{d.pages.map(p => <span key={p.title} className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-600">{p.title}</span>)}</div></div>)}
+        {wiki_pages.map(d => <div key={d.directory} className="mb-4"><h4 className="text-sm font-semibold text-blue-600 mb-2">📁 {d.directory} ({d.count})</h4><div className="flex flex-wrap gap-1.5">{d.pages.map(p => <button key={p.title} onClick={() => setViewingPage(p.path)} className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 cursor-pointer transition">{p.title}</button>)}</div></div>)}
       </div>}
 
       {tab === '操作日志' && <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -162,6 +165,11 @@ export default function Dashboard() {
           </div>}
         </div>
       </div>}
+
+      {tab === '待办管理' && <div className="bg-white border border-slate-200 rounded-xl p-4"><TodoPanel /></div>}
+
+      {viewingPage && <WikiPageViewer path={viewingPage} onClose={() => setViewingPage(null)} />}
     </div>
   );
 }
+

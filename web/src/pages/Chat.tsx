@@ -5,7 +5,8 @@ import remarkGfm from 'remark-gfm';
 import { api } from '../api';
 import type { ConvItem, ConvMsg } from '../types';
 
-const hints = ['待办列表', '? AI Workflow 是什么', '今天要做什么'];
+const hints = ['查看待办', '? AI Workflow 是什么', '今天要做什么'];
+const ASSISTANT_NAME = '若愚';
 
 export default function Chat() {
   const [convs, setConvs] = useState<ConvItem[]>([]);
@@ -15,10 +16,13 @@ export default function Chat() {
   const [sending, setSending] = useState(false);
   const [speaking, setSpeaking] = useState<number | null>(null);  // 正在朗读的消息索引
   const [listening, setListening] = useState(false);  // 语音输入中
+  const [voiceMode, setVoiceMode] = useState(false);  // 语音唤醒模式
+  const [waitingCommand, setWaitingCommand] = useState(false);  // 唤醒后等待指令
   const sidebarOpen = true;
   const chatEnd = useRef<HTMLDivElement>(null);
+  const wakeRecognitionRef = useRef<any>(null);
 
-  // 语音合成 — 朗读 bot 消息
+  // 语音合成 — 朗读 bot 消息（浏览器端，非 USB 音响）
   function speakMessage(index: number, text: string) {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
@@ -52,6 +56,111 @@ export default function Chat() {
     setListening(true);
     recognition.start();
   }
+
+  // ---- 语音唤醒模式 ----
+
+  function startWakeWord() {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (!event.results[i].isFinal) continue;
+        const transcript: string = event.results[i][0].transcript;
+
+        // 检测唤醒词
+        const wakeMarkers = ['若愚', '若鱼', '若雨', 'ruo yu', 'ruoyu'];
+        const match = wakeMarkers.find(w => transcript.includes(w));
+        if (match) {
+          const idx = transcript.indexOf(match);
+          const command = transcript.slice(idx + match.length).trim();
+          if (command) {
+            processVoiceCommand(command);
+          } else {
+            setWaitingCommand(true);
+          }
+        } else if (waitingCommand) {
+          processVoiceCommand(transcript);
+          setWaitingCommand(false);
+        }
+      }
+    };
+
+    recognition.onerror = () => {
+      if (voiceMode) setTimeout(startWakeWord, 1000);
+    };
+    recognition.onend = () => {
+      if (voiceMode) setTimeout(startWakeWord, 500);
+    };
+
+    wakeRecognitionRef.current = recognition;
+    recognition.start();
+  }
+
+  function stopWakeWord() {
+    if (wakeRecognitionRef.current) {
+      wakeRecognitionRef.current.stop();
+      wakeRecognitionRef.current = null;
+    }
+    setWaitingCommand(false);
+  }
+
+  async function processVoiceCommand(command: string) {
+    if (!command.trim()) return;
+    setInput(command);
+    setSending(true);
+
+    const now = new Date().toLocaleTimeString();
+    const userMsg: ConvMsg = { role: 'user', text: `🎤 ${command}`, time: now };
+    const updated = [...messages, userMsg];
+    setMessages(updated);
+
+    try {
+      const resp = await fetch('/api/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: command, conversation_id: activeId || '' }),
+      });
+      const data = await resp.json();
+      const reply = data.reply || '处理完成';
+      const botMsg: ConvMsg = {
+        role: 'bot',
+        text: reply + (data.spoken ? ' 🔊' : ''),
+        time: new Date().toLocaleTimeString(),
+      };
+      const finalMessages = [...updated, botMsg];
+      setMessages(finalMessages);
+
+      api.saveConv({
+        id: activeId || undefined,
+        title: command.slice(0, 30),
+        messages: finalMessages.map(m => ({ role: m.role, text: m.text, time: m.time })),
+      }).then(({ id }) => { if (!activeId) setActiveId(id); api.listConvs().then(setConvs); }).catch(() => {});
+    } catch (err: any) {
+      const botMsg: ConvMsg = { role: 'bot', text: `❌ ${err.message || '网络错误'}`, time: new Date().toLocaleTimeString() };
+      setMessages([...updated, botMsg]);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function toggleVoiceMode() {
+    if (voiceMode) {
+      stopWakeWord();
+      setVoiceMode(false);
+    } else {
+      setVoiceMode(true);
+      startWakeWord();
+    }
+  }
+
+  // 清理
+  useEffect(() => { return () => stopWakeWord(); }, []);
 
   useEffect(() => { api.listConvs().then(setConvs).catch(() => {}); }, []);
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -169,8 +278,8 @@ export default function Chat() {
             )}
             {messages.map((m, i) => (
               <div key={i} className={`flex gap-3 mb-4 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-blue-600'}`}>
-                  {m.role === 'user' ? 'J' : '🤖'}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${m.role === 'user' ? 'bg-blue-600 text-white' : voiceMode ? 'bg-purple-100 text-purple-600 font-medium' : 'bg-slate-100 text-blue-600'}`}>
+                  {m.role === 'user' ? 'J' : voiceMode ? ASSISTANT_NAME : '🤖'}
                 </div>
                 <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-blue-50 rounded-br-md' : 'bg-white border border-slate-200 rounded-bl-md'}`}>
                   {m.role === 'bot' && m.text.trim() === '' ? (
@@ -206,14 +315,29 @@ export default function Chat() {
         </div>
 
         <div className="border-t border-slate-200 bg-white p-3">
+          {/* 语音模式状态栏 */}
+          {voiceMode && (
+            <div className="max-w-2xl mx-auto mb-2 flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-slate-500">
+                语音模式已开启 — 说 <strong className="text-purple-600">{ASSISTANT_NAME}</strong> 唤醒
+                {waitingCommand && <span className="text-amber-500 ml-1">，正在等待指令...</span>}
+              </span>
+            </div>
+          )}
           <div className="max-w-2xl mx-auto flex gap-2">
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey}
-              placeholder={listening ? '正在聆听...' : '输入消息，Enter 发送'} disabled={sending}
+              placeholder={listening ? '正在聆听...' : voiceMode ? `说"${ASSISTANT_NAME}"唤醒我...` : '输入消息，Enter 发送'} disabled={sending}
               className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50" />
-            <button onClick={startListening} disabled={listening}
-              className={`px-3 py-2.5 rounded-xl text-sm border transition ${listening ? 'bg-red-50 border-red-300 text-red-600 animate-pulse' : 'border-slate-200 hover:bg-slate-50'}`}
+            <button onClick={startListening} disabled={listening || voiceMode}
+              className={`px-3 py-2.5 rounded-xl text-sm border transition ${listening ? 'bg-red-50 border-red-300 text-red-600 animate-pulse' : 'border-slate-200 hover:bg-slate-50 disabled:opacity-30'}`}
               title="语音输入">
               🎤
+            </button>
+            <button onClick={toggleVoiceMode}
+              className={`px-3 py-2.5 rounded-xl text-sm border transition font-medium ${voiceMode ? 'bg-purple-600 text-white border-purple-600 animate-pulse' : 'border-purple-200 text-purple-500 hover:bg-purple-50'}`}
+              title={voiceMode ? '关闭语音模式' : '开启语音模式'}>
+              若愚
             </button>
             <button onClick={() => send()} disabled={sending}
               className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">发送</button>

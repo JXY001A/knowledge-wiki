@@ -22,7 +22,6 @@ def execute(context: dict) -> str:
     for prefix in ["说", "speak", "说话", "喊", "播放", "朗读"]:
         if text.startswith(prefix):
             text = text[len(prefix):].strip()
-            # 去除可能的分隔符
             text = re.sub(r'^[：:，,\s]+', '', text)
             break
 
@@ -32,7 +31,9 @@ def execute(context: dict) -> str:
         return ""
 
     try:
-        # 生成 TTS 语音
+        from knowledge_wiki.config import settings
+        device = settings.tts_speaker_device
+
         async def _gen():
             import edge_tts
             communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
@@ -40,13 +41,12 @@ def execute(context: dict) -> str:
 
         asyncio.run(_gen())
 
-        # 转 WAV → 播放
         subprocess.run(
             ["mpg123", "-q", "-w", "/tmp/speak-text.wav", "/tmp/speak-text.mp3"],
             timeout=10,
         )
         subprocess.run(
-            ["aplay", "-q", "-D", "plughw:2,0", "/tmp/speak-text.wav"],
+            ["aplay", "-q", "-D", device, "/tmp/speak-text.wav"],
             timeout=10,
         )
 

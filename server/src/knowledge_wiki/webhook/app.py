@@ -480,4 +480,8 @@ def create_app() -> Flask:
     def react_assets(filename):
         return serve_static(filename)
 
+    # 注册 REST API 蓝图
+    from knowledge_wiki.webhook.api_routes import register_api_routes
+    register_api_routes(app)
+
     return app

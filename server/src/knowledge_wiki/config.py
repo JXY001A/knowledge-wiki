@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # Retrieval v2 — 新检索流水线开关（False 时回退旧实现）
     use_new_retrieval: bool = True
 
+    # 语音助手
+    assistant_name: str = "若愚"          # 唤醒词 / 助手显示名
+    tts_speaker_device: str = "plughw:2,0"  # USB 音响 ALSA 设备
+    voice_enabled: bool = True            # 语音功能总开关
+
     model_config = {"env_prefix": "", "extra": "ignore", "env_file": ".env", "env_file_encoding": "utf-8"}
 
 

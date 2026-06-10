@@ -67,9 +67,20 @@ def route_intent(text: str, context: dict) -> dict:
             _log.warning("Tool %s failed: %s", name, e)
             results.append({"name": name, "args": args, "result": f"执行失败: {e}"})
 
-    # 将工具结果作为新的 assistant 消息
+    # 展示结果：list/view 类直接展示原始结果，create/delete 类才合成简短回复
+    display_tools = {"manage_todos": ["list"], "view_schedule": None, "track_habit": ["stats"],
+                     "generate_brief": None, "search_knowledge": None}
     if results:
-        reply = _synthesize_reply(text, results, messages)
+        # 判断是否直接展示原始结果（不压缩）
+        direct = any(
+            r["name"] in display_tools
+            and (display_tools[r["name"]] is None or r.get("args", {}).get("action") in display_tools[r["name"]])
+            for r in results
+        )
+        if direct and len(results) == 1:
+            reply = results[0]["result"]
+        else:
+            reply = _synthesize_reply(text, results, messages)
     else:
         reply = "操作完成"
 

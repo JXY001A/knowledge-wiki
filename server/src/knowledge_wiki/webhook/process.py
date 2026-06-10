@@ -163,7 +163,10 @@ def handle_inbox_text(user_id: str, text: str, send_md):
 
 def process_message(user_id: str, text: str, send_md, send_tpl,
                    history: list[dict] | None = None):
-    """处理收到的消息 — 通过 Skill 引擎路由分发.
+    """处理收到的消息 — LLM Router 自动意图识别.
+
+    v5: 用 DeepSeek function-calling 替换关键词匹配。
+    用户说自然语言，系统自动判断该调哪个工具（或直接聊天）。
 
     Args:
         user_id: 用户标识
@@ -172,87 +175,70 @@ def process_message(user_id: str, text: str, send_md, send_tpl,
         send_tpl: 模板消息回调
         history: 最近对话历史 [{"role":"user"/"bot","content":"..."}]
     """
-    from knowledge_wiki.skill.engine import match_skill
-    from knowledge_wiki.skill.planner import execute_skill
-
     try:
         stripped = text.strip()
         _debug(f"IN user={user_id} text={stripped[:120]} hist={len(history) if history else 0}")
 
-        def _wrapped_send_md(uid, txt):
-            ctx["_handled"] = True
-            send_md(uid, txt)
+        if not stripped:
+            return
 
         ctx = {
             "user_id": user_id,
             "input_text": stripped,
-            "send_md": _wrapped_send_md,
+            "send_md": send_md,
             "send_tpl": send_tpl,
             "history": history or [],
         }
 
-        skill = None
+        # ? 前缀强制知识查询
         if stripped.startswith("?"):
             question = stripped[1:].strip()
             if not question:
                 send_md(user_id, "请输入查询内容，如：`? DevMechin GPU`")
                 return
-            ctx["query"] = question
-            skill = match_skill(question)
-        elif is_url(stripped):
-            skill = match_skill(stripped)
-        else:
-            # 优先走 LLM 分类（语义理解），关键词做快速兜底
-            from knowledge_wiki.skill.engine import classify_intent_llm
-            skill_name = classify_intent_llm(stripped)
-            _debug(f"LLM classify: {skill_name}")
-            if skill_name:
-                # 合理性校验：ingest-article 必须有 URL
-                if skill_name == "ingest-article" and not is_url(stripped):
-                    _debug("LLM classify rejected: ingest-article but no URL")
-                    skill_name = None
-                # 合理性校验：问题类文本不应被归为笔记/书签
-                if skill_name in ("note-quick", "bookmark-save") and (
-                    stripped.endswith("?") or stripped.endswith("？")
-                    or any(kw in stripped for kw in ["什么是", "如何", "怎么", "为什么", "介绍一下"])
-                ):
-                    _debug(f"LLM classify rejected: {skill_name} but looks like a question")
-                    skill_name = None
-            if skill_name:
-                from knowledge_wiki.skill.registry import find_skill
-                skill = find_skill(skill_name)
-            if not skill:
-                skill = match_skill(stripped)  # 关键词兜底
+            from knowledge_wiki.skill.tools import _exec_search_knowledge
+            answer = _exec_search_knowledge({"query": question}, ctx)
+            send_md(user_id, answer[:3000])
+            _debug("DONE (forced query)")
+            return
 
-            # 合理性校验（关键词匹配后也要验证）
-            if skill and skill.name == "ingest-article" and not is_url(stripped):
-                _debug("keyword match rejected: ingest-article but no URL")
-                skill = None
+        # URL 消息强制摄取
+        if is_url(stripped):
+            from knowledge_wiki.skill.tools import _exec_ingest_url
+            answer = _exec_ingest_url({"url": stripped}, user_id, send_md)
+            send_md(user_id, answer[:3000])
+            _debug("DONE (url ingest)")
+            return
 
-        _debug(f"skill={skill.name if skill else None}")
+        # LLM Router 自动判断意图
+        from knowledge_wiki.skill.router import route_intent
+        result = route_intent(stripped, ctx)
+        rtype = result.get("type", "chat")
+        reply = result.get("reply", "")
 
-        if not skill:
-            if stripped.startswith("?"):
-                execute_skill("query-knowledge", ctx)
-            elif is_url(stripped):
-                execute_skill("ingest-article", ctx)
-            else:
-                # 默认走知识库查询；查询无结果时 skill 本身会降级处理
-                execute_skill("query-knowledge", ctx)
-        else:
-            result = execute_skill(skill.name, ctx)
-            _debug(f"result_len={len(result) if result else 0} handled={ctx.get('_handled')}")
-            if result and result.strip() and not ctx.get("_handled"):
-                send_md(user_id, result[:3000])
+        # 工具调用记录
+        if result.get("calls"):
+            calls_str = ", ".join(c["name"] for c in result["calls"])
+            _debug(f"tools={calls_str}")
 
+        _debug(f"router={rtype} reply_len={len(reply)}")
+
+        if reply:
+            send_md(user_id, reply[:3000])
         _debug("DONE")
 
     except Exception:
         _debug(f"ERROR: {traceback.format_exc()}")
+        # 降级：出错时走知识查询
         try:
-            send_md(user_id, "处理消息时出错，请重试。")
+            from knowledge_wiki.skill.tools import _exec_search_knowledge
+            fallback = _exec_search_knowledge({"query": stripped}, {"user_id": user_id, "history": history or []})
+            send_md(user_id, fallback[:3000] if fallback else "处理出错，请重试。")
         except Exception:
-            pass
+            try:
+                send_md(user_id, "处理消息时出错，请重试。")
+            except Exception:
+                pass
 
 
 # ---- 提取辅助函数 ----

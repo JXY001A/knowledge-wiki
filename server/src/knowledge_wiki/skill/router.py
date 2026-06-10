@@ -149,7 +149,7 @@ def _call_function_calling(messages: list[dict]) -> list[dict] | None:
                 "tools": TOOLS,
                 "tool_choice": "auto",
                 "temperature": 0.1,
-                "max_tokens": 512,
+                "max_tokens": 1024,
             }).encode()
 
             req = urllib.request.Request(

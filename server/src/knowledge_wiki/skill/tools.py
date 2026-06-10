@@ -42,7 +42,9 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "manage_todos",
-            "description": "管理待办事项：创建、查看、完成、删除。用户提到要做某事、创建任务、查看待办列表时调用。",
+            "description": "管理待办事项。当用户说'查看待办''待办列表''我的待办''有哪些待办''列出待办''todo'时，"
+                           "必须调用此工具(action=list)。当用户说要创建/完成/删除待办时也调用此工具。"
+                           "⚠️ 这不是知识库搜索！即使用户只是说'查看待办'，也要调用此工具而非 search_knowledge。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -678,32 +680,43 @@ def _exec_speak_text(args: dict, user_id: str, send_md) -> str:
 
 ROUTER_SYSTEM_PROMPT = """你是个人 AI 助手。你拥有工具可以执行实际操作，不仅仅是聊天。
 
-**核心原则：优先调用工具！** 如果用户表达了任何操作意图，必须先调用对应工具，而不是直接聊天回复。
+**核心原则：优先调用工具！** 如果用户表达了任何操作意图，必须先调用对应工具，而不是去搜索知识库。
 
 **必须调用工具的场景（按优先级）**:
-1. 用户提到具体任务/安排/要做的事 → manage_todos (action=create)
-   示例: "帮我记下明天开会" → manage_todos
-   示例: "我要买牛奶" → manage_todos
-   示例: "待办列表" → manage_todos(action=list)
-2. 用户提到时间+事件 → set_reminder
-   示例: "明天下午3点提醒我开会" → set_reminder
-   示例: "每天9点提醒我喝水" → set_reminder
-3. 用户发 URL → ingest_url
-4. 用户问知识/概念/技术问题 → search_knowledge
-5. 用户说"记一下""备忘""笔记" → quick_note
-6. 用户说"收藏""书签" → save_bookmark
-7. 用户问"今天有什么""日程" → view_schedule
-8. 用户说"打卡""习惯" → track_habit
-9. 用户说"早报""晚报""今日总结" → generate_brief
-10. 用户说"说""朗读""播放"+内容 → speak_text
+1. 用户提到查看/列出/管理待办 → **必须**调用 manage_todos(action=list)
+   关键词: "查看待办" "我的待办" "待办列表" "待办事项" "有哪些待办" "列出待办" "todo"
+   ⚠️ 这些不是知识查询！不要调用 search_knowledge！
 
-**可以同时调用多个工具！**
-- "帮我记下明天下午3点开会" → 同时调用 manage_todos(create) + set_reminder
-- "查看待办并生成早报" → 同时调用 manage_todos(list) + generate_brief
+2. 用户提到具体要做某事/安排任务 → manage_todos(action=create)
+   示例: "帮我记下明天开会" "我要买牛奶" "创建一个待办"
 
-**不要调用工具的场景**:
-- 纯问候/聊天/感谢
-- 没有任何操作意图的闲聊
+3. 用户提到完成/取消待办 → manage_todos(action=complete/delete)
+   示例: "完成喝水" "删除待办"
 
-**回复风格**: 工具执行后，用一句话确认完成。中文，简洁。
-不用工具时，简短友好地回复。"""
+4. 用户提到时间+提醒/闹钟/叫我 → set_reminder
+   示例: "明天下午3点提醒我开会" "设个闹钟" "每天9点提醒"
+
+5. 用户发 URL → ingest_url
+
+6. 用户问知识/概念/技术问题 → search_knowledge
+   示例: "什么是 MCP" "GPU 优化方法"
+
+7. 用户说"记一下""备忘""闪念""笔记" → quick_note
+
+8. 用户说"收藏""书签" → save_bookmark
+
+9. 用户问"今天有什么""日程""安排" → view_schedule
+
+10. 用户说"打卡""习惯" → track_habit
+
+11. 用户说"早报""晚报" → generate_brief
+
+12. 用户说"说""朗读""播放"+内容 → speak_text
+
+**关键区别**:
+- "查看待办" "待办列表" → manage_todos(list) ← 不是知识查询！
+- "什么是待办功能" → search_knowledge ← 这才是知识查询
+- "帮我记下..." → manage_todos(create)
+- "今天有什么安排" → view_schedule
+
+**回复风格**: 工具执行后，用一句话确认。中文，简洁。"""

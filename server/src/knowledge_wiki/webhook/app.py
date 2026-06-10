@@ -234,7 +234,34 @@ def create_app() -> Flask:
             _log = logging.getLogger(__name__)
 
             try:
-                # 0. 意图分类 + 检索（复用现有流程）
+                # 0. 工具路由优先 —— 如果匹配工具，直接执行并流式返回结果
+                try:
+                    from knowledge_wiki.skill.router import _match_local_route, _enrich_args
+                    from knowledge_wiki.skill.tools import execute_tool
+
+                    local_hit = _match_local_route(text)
+                    if local_hit:
+                        tool_name, default_args = local_hit
+                        args = _enrich_args(text, tool_name, default_args)
+                        ctx = {
+                            "user_id": "web_user",
+                            "send_md": lambda uid, msg: full_reply_parts.append(msg),
+                            "send_tpl": lambda *a, **kw: None,
+                            "history": history,
+                        }
+                        result_text = execute_tool(tool_name, args, ctx)
+                        # 逐 token 发送工具结果
+                        for i in range(0, len(result_text), 5):
+                            chunk = result_text[i:i+5]
+                            full_reply_parts.append(chunk)
+                            yield f"data: {json.dumps({'token': chunk})}\n\n"
+                        yield f"data: {json.dumps({'done': True})}\n\n"
+                        return
+                except Exception as e:
+                    _log.warning("stream tool route failed: %s", e)
+                    # 工具路由失败，继续走检索+LLM
+
+                # 1. 意图分类 + 检索（复用现有流程）
                 question = text.strip()
 
                 # 0.3 用户画像

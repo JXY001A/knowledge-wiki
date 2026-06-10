@@ -159,11 +159,12 @@ def call_short(question: str, context: str) -> str | None:
 
 def call_detailed(question: str, context: str, num_predict: int = 1500) -> str | None:
     """调用 qwen2.5:3b 生成详细 markdown 回答."""
+    name = settings.assistant_name
     return _call_ollama(
         model=settings.ollama_model_query,
         messages=[
             {"role": "system", "content": (
-                "用中文回答，详细但不过于啰嗦\n"
+                f"你是{name}，用中文回答，详细但不过于啰嗦\n"
                 "用 ## 标题分段\n"
                 "用 **粗体** 强调关键术语\n"
                 "用 `代码` 标记技术名词\n"

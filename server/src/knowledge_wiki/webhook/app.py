@@ -299,12 +299,14 @@ def create_app() -> Flask:
                 # 3. 选择模型
                 use_deepseek = len(wiki_context) >= 1000 and getattr(settings, "deepseek_api_key", None)
 
+                assistant_name = settings.assistant_name
                 if use_deepseek:
                     # DeepSeek 流式
                     from knowledge_wiki.llm.deepseek import stream_deepseek
                     messages = [
                         {"role": "system", "content": (
-                            "你是个人知识库助手。基于提供的知识库资料回答用户问题。"
+                            f'你是{assistant_name}，一个个人知识库助手，取意“大智若愚”。'
+                            "基于提供的知识库资料回答用户问题。"
                             "用中文回答，200-500字。用[[页面名]]标注引用。"
                             "不要用表格，用##标题分段。"
                         )},
@@ -319,7 +321,7 @@ def create_app() -> Flask:
                     from knowledge_wiki.llm.ollama import stream_ollama
                     messages = [
                         {"role": "system", "content": (
-                            "用中文回答，详细但不过于啰嗦。用##标题分段。"
+                            f'你是{assistant_name}，用中文回答，详细但不过于啰嗦。用##标题分段。'
                             "用**粗体**强调关键术语。用-列表。"
                             "不要用表格和代码块。200-400字。只基于提供的资料。"
                         )},

@@ -17,7 +17,7 @@ import logging
 import re as _re_module
 import urllib.request
 from knowledge_wiki.config import settings
-from knowledge_wiki.skill.tools import TOOLS, ROUTER_SYSTEM_PROMPT, execute_tool
+from knowledge_wiki.skill.tools import TOOLS, _get_router_system_prompt, execute_tool
 
 _log = logging.getLogger(__name__)
 
@@ -167,7 +167,7 @@ def route_intent(text: str, context: dict) -> dict:
             # 本地路由执行失败，继续走 LLM
 
     # 构建 messages
-    messages = [{"role": "system", "content": ROUTER_SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": _get_router_system_prompt()}]
 
     # 注入历史（最近 10 轮）
     for m in history[-10:]:

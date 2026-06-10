@@ -217,8 +217,9 @@ def call_deepseek_query(question: str, context: str,
         return None
 
     if not system_prompt:
+        name = settings.assistant_name
         system_prompt = (
-            "你是个人知识库助手。基于提供的知识库资料回答用户问题。\n\n"
+            f'你是{name}，一个个人知识库助手，取意“大智若愚”。基于提供的知识库资料回答用户问题。\n\n'
             "**要求**：\n"
             "1. 优先基于知识库资料回答，标注引用来源（用 [[页面名]] 格式）\n"
             "2. 回答结构清晰，用 ## 标题分段\n"

@@ -3,9 +3,12 @@ import ReactMarkdown from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 import { api } from '../api';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 import type { ConvItem, ConvMsg } from '../types';
 
-const hints = ['查看待办', '? AI Workflow 是什么', '今天要做什么'];
+const hints = ['查看待办', '知识查询', '创建待办', '今日早报'];
 const ASSISTANT_NAME = '若愚';
 
 export default function Chat() {
@@ -14,20 +17,17 @@ export default function Chat() {
   const [messages, setMessages] = useState<ConvMsg[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [speaking, setSpeaking] = useState<number | null>(null);  // 正在朗读的消息索引
-  const [listening, setListening] = useState(false);  // 语音输入中
-  const [voiceMode, setVoiceMode] = useState(false);  // 语音唤醒模式
-  const [waitingCommand, setWaitingCommand] = useState(false);  // 唤醒后等待指令
-  const sidebarOpen = true;
+  const [speaking, setSpeaking] = useState<number | null>(null);
+  const [listening, setListening] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [waitingCommand, setWaitingCommand] = useState(false);
   const chatEnd = useRef<HTMLDivElement>(null);
   const wakeRecognitionRef = useRef<any>(null);
 
-  // 语音合成 — 朗读 bot 消息（浏览器端，非 USB 音响）
   function speakMessage(index: number, text: string) {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     if (speaking === index) { setSpeaking(null); return; }
-    // 清理 Markdown 语法后再朗读
     const cleanText = text.replace(/[#*`\[\]|>_-]/g, ' ').replace(/\s+/g, ' ').trim();
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = 'zh-CN';
@@ -38,7 +38,6 @@ export default function Chat() {
     window.speechSynthesis.speak(utterance);
   }
 
-  // 语音输入 — 浏览器 SpeechRecognition
   function startListening() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
@@ -46,122 +45,71 @@ export default function Chat() {
     recognition.lang = 'zh-CN';
     recognition.interimResults = false;
     recognition.continuous = false;
-    recognition.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
-      setInput(text);
-      setListening(false);
-    };
+    recognition.onresult = (event: any) => { setInput(event.results[0][0].transcript); setListening(false); };
     recognition.onerror = () => setListening(false);
     recognition.onend = () => setListening(false);
     setListening(true);
     recognition.start();
   }
 
-  // ---- 语音唤醒模式 ----
-
   function startWakeWord() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
-
     const recognition = new SpeechRecognition();
     recognition.lang = 'zh-CN';
     recognition.continuous = true;
     recognition.interimResults = true;
-
     recognition.onresult = (event: any) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (!event.results[i].isFinal) continue;
         const transcript: string = event.results[i][0].transcript;
-
-        // 检测唤醒词
         const wakeMarkers = ['若愚', '若鱼', '若雨', 'ruo yu', 'ruoyu'];
         const match = wakeMarkers.find(w => transcript.includes(w));
         if (match) {
           const idx = transcript.indexOf(match);
           const command = transcript.slice(idx + match.length).trim();
-          if (command) {
-            processVoiceCommand(command);
-          } else {
-            setWaitingCommand(true);
-          }
-        } else if (waitingCommand) {
-          processVoiceCommand(transcript);
-          setWaitingCommand(false);
-        }
+          command ? processVoiceCommand(command) : setWaitingCommand(true);
+        } else if (waitingCommand) { processVoiceCommand(transcript); setWaitingCommand(false); }
       }
     };
-
-    recognition.onerror = () => {
-      if (voiceMode) setTimeout(startWakeWord, 1000);
-    };
-    recognition.onend = () => {
-      if (voiceMode) setTimeout(startWakeWord, 500);
-    };
-
+    recognition.onerror = () => { if (voiceMode) setTimeout(startWakeWord, 1000); };
+    recognition.onend = () => { if (voiceMode) setTimeout(startWakeWord, 500); };
     wakeRecognitionRef.current = recognition;
     recognition.start();
   }
 
   function stopWakeWord() {
-    if (wakeRecognitionRef.current) {
-      wakeRecognitionRef.current.stop();
-      wakeRecognitionRef.current = null;
-    }
+    if (wakeRecognitionRef.current) { wakeRecognitionRef.current.stop(); wakeRecognitionRef.current = null; }
     setWaitingCommand(false);
   }
 
   async function processVoiceCommand(command: string) {
     if (!command.trim()) return;
-    setInput(command);
-    setSending(true);
-
+    setInput(command); setSending(true);
     const now = new Date().toLocaleTimeString();
     const userMsg: ConvMsg = { role: 'user', text: `🎤 ${command}`, time: now };
     const updated = [...messages, userMsg];
     setMessages(updated);
-
     try {
-      const resp = await fetch('/api/voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: command, conversation_id: activeId || '' }),
-      });
+      const resp = await fetch('/api/voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: command, conversation_id: activeId || '' }) });
       const data = await resp.json();
       const reply = data.reply || '处理完成';
-      const botMsg: ConvMsg = {
-        role: 'bot',
-        text: reply + (data.spoken ? ' 🔊' : ''),
-        time: new Date().toLocaleTimeString(),
-      };
+      const botMsg: ConvMsg = { role: 'bot', text: reply + (data.spoken ? ' 🔊' : ''), time: new Date().toLocaleTimeString() };
       const finalMessages = [...updated, botMsg];
       setMessages(finalMessages);
-
-      api.saveConv({
-        id: activeId || undefined,
-        title: command.slice(0, 30),
-        messages: finalMessages.map(m => ({ role: m.role, text: m.text, time: m.time })),
-      }).then(({ id }) => { if (!activeId) setActiveId(id); api.listConvs().then(setConvs); }).catch(() => {});
+      api.saveConv({ id: activeId || undefined, title: command.slice(0, 30), messages: finalMessages.map(m => ({ role: m.role, text: m.text, time: m.time })) })
+        .then(({ id }) => { if (!activeId) setActiveId(id); api.listConvs().then(setConvs); }).catch(() => {});
     } catch (err: any) {
-      const botMsg: ConvMsg = { role: 'bot', text: `❌ ${err.message || '网络错误'}`, time: new Date().toLocaleTimeString() };
-      setMessages([...updated, botMsg]);
-    } finally {
-      setSending(false);
-    }
+      setMessages([...updated, { role: 'bot', text: `❌ ${err.message || '网络错误'}`, time: new Date().toLocaleTimeString() }]);
+    } finally { setSending(false); }
   }
 
   function toggleVoiceMode() {
-    if (voiceMode) {
-      stopWakeWord();
-      setVoiceMode(false);
-    } else {
-      setVoiceMode(true);
-      startWakeWord();
-    }
+    if (voiceMode) { stopWakeWord(); setVoiceMode(false); }
+    else { setVoiceMode(true); startWakeWord(); }
   }
 
-  // 清理
   useEffect(() => { return () => stopWakeWord(); }, []);
-
   useEffect(() => { api.listConvs().then(setConvs).catch(() => {}); }, []);
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -171,140 +119,108 @@ export default function Chat() {
 
   const streamCtrl = useRef<AbortController | null>(null);
 
-  // 发送消息（支持直接传文本参数，避免 setState 异步问题）
   async function send(presetText?: string) {
     const text = (presetText || input).trim(); if (!text || sending) return;
     setInput(''); setSending(true);
     const now = new Date().toLocaleTimeString();
     const userMsg: ConvMsg = { role: 'user', text, time: now };
-    const placeholder = '  '; // 占位符，保证消息气泡可见
-    const botMsg: ConvMsg = { role: 'bot', text: placeholder, time: '' };
+    const botMsg: ConvMsg = { role: 'bot', text: '  ', time: '' };
     const updated = [...messages, userMsg, botMsg];
     setMessages(updated);
-
     const botIndex = updated.length - 1;
     let firstToken = true;
-
-    // 获取流式回复
-    const ctrl = api.streamMessage(
-      text,
-      activeId,
-      // onToken — 逐字追加（首次替换占位符）
-      (token) => {
-        setMessages(prev => {
-          const next = [...prev];
-          if (next[botIndex]) {
-            const cur = firstToken ? '' : next[botIndex].text;
-            firstToken = false;
-            next[botIndex] = { ...next[botIndex], text: cur + token, time: new Date().toLocaleTimeString() };
-          }
-          return next;
-        });
-      },
-      // onDone — 流完成，保存会话
-      (fullText) => {
-        setSending(false);
-        setMessages(prev => {
-          const next = [...prev];
-          next[botIndex] = { ...next[botIndex], text: fullText, time: new Date().toLocaleTimeString() };
-          return next;
-        });
-        // 保存到 DB
-        const title = activeId ? undefined : text.slice(0, 30);
-        api.saveConv({ id: activeId || undefined, title: title || '新对话', messages: [...updated.slice(0, -1), { role: 'bot' as const, text: fullText, time: new Date().toLocaleTimeString() }] })
-          .then(({ id }) => { if (!activeId) setActiveId(id); api.listConvs().then(setConvs); })
-          .catch(() => {});
-      },
-      // onError
-      (err) => {
-        setSending(false);
-        setMessages(prev => {
-          const next = [...prev];
-          next[botIndex] = { ...next[botIndex], text: `❌ ${err}`, time: new Date().toLocaleTimeString() };
-          return next;
-        });
-      },
+    const ctrl = api.streamMessage(text, activeId,
+      (token) => { setMessages(prev => { const next = [...prev]; if (next[botIndex]) { const cur = firstToken ? '' : next[botIndex].text; firstToken = false; next[botIndex] = { ...next[botIndex], text: cur + token, time: new Date().toLocaleTimeString() }; } return next; }); },
+      (fullText) => { setSending(false); setMessages(prev => { const next = [...prev]; next[botIndex] = { ...next[botIndex], text: fullText, time: new Date().toLocaleTimeString() }; return next; }); const title = activeId ? undefined : text.slice(0, 30); api.saveConv({ id: activeId || undefined, title: title || '新对话', messages: [...updated.slice(0, -1), { role: 'bot' as const, text: fullText, time: new Date().toLocaleTimeString() }] }).then(({ id }) => { if (!activeId) setActiveId(id); api.listConvs().then(setConvs); }).catch(() => {}); },
+      (err) => { setSending(false); setMessages(prev => { const next = [...prev]; next[botIndex] = { ...next[botIndex], text: `❌ ${err}`, time: new Date().toLocaleTimeString() }; return next; }); },
     );
     streamCtrl.current = ctrl;
   }
 
-  async function newChat() {
-    streamCtrl.current?.abort();  // 取消进行中的流
-    setActiveId(null); setMessages([]); setSending(false);
-  }
+  async function newChat() { streamCtrl.current?.abort(); setActiveId(null); setMessages([]); setSending(false); }
   async function deleteConv() { if (!activeId) return; streamCtrl.current?.abort(); await api.deleteConv(activeId); setActiveId(null); setMessages([]); api.listConvs().then(setConvs); }
 
   function onKey(e: React.KeyboardEvent) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
-  function quickSend(label: string) { send(label.slice(2)); }
+  function quickSend(label: string) { send(label); }
 
   return (
-    <div className="flex h-[calc(100vh-56px)]">
-      <aside className={`${sidebarOpen ? 'w-60' : 'w-0'} bg-white border-r border-slate-200 flex flex-col transition-all overflow-hidden flex-shrink-0`}>
+    <div className="flex h-[calc(100vh-48px)]">
+      {/* 深色侧边栏 */}
+      <aside className="w-64 bg-sidebar flex flex-col flex-shrink-0">
         <div className="p-3">
-          <button onClick={newChat} className="w-full py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm hover:bg-slate-100">＋ 新对话</button>
+          <Button onClick={newChat} variant="secondary" className="w-full justify-start">
+            ＋ 新对话
+          </Button>
         </div>
-        <div className="flex-1 overflow-y-auto px-2 pb-2">
+        <ScrollArea className="flex-1 px-2 pb-2">
           {convs.map(c => (
             <div key={c.id} onClick={() => loadConv(c.id)}
-              className={`px-3 py-2.5 rounded-lg cursor-pointer text-sm mb-0.5 ${c.id === activeId ? 'bg-blue-50 text-blue-600' : 'hover:bg-slate-50'}`}>
-              <div className="font-medium truncate flex items-center gap-1">
-                {c.title || '新对话'}
-                {c.channel && c.channel !== 'web' && (
-                  <span className="text-[10px] bg-green-50 text-green-600 px-1 rounded">{c.channel === 'wecom' ? '💬' : '🔧'}</span>
-                )}
-              </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">{c.updated_at?.slice(0, 10)}{c.channel && c.channel !== 'web' ? ` · ${c.channel}` : ''}</div>
+              className={cn(
+                'px-3 py-2.5 rounded-lg cursor-pointer text-sm mb-0.5 transition-colors',
+                c.id === activeId
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+              )}>
+              <div className="truncate text-[13px]">{c.title || '新对话'}</div>
+              <div className="text-[10px] text-sidebar-foreground/40 mt-0.5">{c.updated_at?.slice(0, 10)}</div>
             </div>
           ))}
-          {convs.length === 0 && <p className="text-xs text-slate-400 text-center py-8">暂无历史对话</p>}
-        </div>
-        {activeId && <div className="p-2 border-t border-slate-100"><button onClick={deleteConv} className="w-full text-xs text-red-500 py-1.5 rounded hover:bg-red-50">🗑 删除对话</button></div>}
+          {convs.length === 0 && <p className="text-xs text-sidebar-foreground/40 text-center py-8">暂无历史对话</p>}
+        </ScrollArea>
+        {activeId && (
+          <div className="p-3 border-t border-sidebar-border">
+            <Button onClick={deleteConv} variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-destructive">删除对话</Button>
+          </div>
+        )}
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex-1 overflow-y-auto px-4">
-          <div className="max-w-2xl mx-auto py-4">
+      {/* 主聊天区 */}
+      <div className="flex-1 flex flex-col min-w-0 bg-background">
+        <ScrollArea className="flex-1 px-4">
+          <div className="max-w-3xl mx-auto py-4">
             {messages.length === 0 && (
-              <div className="text-center py-16">
-                <h2 className="text-xl font-bold text-slate-700 mb-2">有什么可以帮你的？</h2>
-                <p className="text-sm text-slate-400 mb-6">知识查询、待办管理、定时提醒、笔记记录</p>
+              <div className="text-center pt-24 pb-8">
+                <h2 className="text-2xl font-semibold text-foreground mb-2">有什么可以帮你的？</h2>
+                <p className="text-sm text-muted-foreground mb-8">知识查询 · 待办管理 · 定时提醒 · 笔记记录</p>
                 <div className="flex flex-wrap gap-2 justify-center">
-                  {['📋 查看待办', '🔍 知识查询', '📅 今日日程', '✅ 创建待办', '⏰ 设置提醒', '📋 今日早报'].map(h => (
-                    <button key={h} onClick={() => quickSend(h)}
-                      className="bg-white border border-slate-200 rounded-full px-4 py-2 text-sm hover:border-blue-300 hover:text-blue-600">{h}</button>
+                  {['查看待办', '知识查询', '今日日程', '创建待办', '设置提醒', '今日早报'].map(h => (
+                    <Button key={h} onClick={() => quickSend(h)} variant="outline" size="sm" className="rounded-full">{h}</Button>
                   ))}
                 </div>
               </div>
             )}
             {messages.map((m, i) => (
-              <div key={i} className={`flex gap-3 mb-4 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${m.role === 'user' ? 'bg-blue-600 text-white' : voiceMode ? 'bg-purple-100 text-purple-600 font-medium' : 'bg-slate-100 text-blue-600'}`}>
-                  {m.role === 'user' ? 'J' : voiceMode ? ASSISTANT_NAME : '🤖'}
+              <div key={i} className={cn('flex gap-3 mb-6', m.role === 'user' && 'flex-row-reverse')}>
+                <div className={cn(
+                  'w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0',
+                  m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                )}>
+                  {m.role === 'user' ? '我' : 'AI'}
                 </div>
-                <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-blue-50 rounded-br-md' : 'bg-white border border-slate-200 rounded-bl-md'}`}>
+                <div className={cn(
+                  'max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed',
+                  m.role === 'user'
+                    ? 'bg-primary/10 text-foreground rounded-br-md'
+                    : 'bg-muted text-foreground rounded-bl-md'
+                )}>
                   {m.role === 'bot' && m.text.trim() === '' ? (
-                    <div className="flex items-center gap-1 text-slate-400 py-1">
-                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <div className="flex items-center gap-1.5 text-muted-foreground py-1">
+                      <span className="w-2 h-2 bg-primary/30 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-primary/30 rounded-full animate-bounce" style={{ animationDelay: '120ms' }} />
+                      <span className="w-2 h-2 bg-primary/30 rounded-full animate-bounce" style={{ animationDelay: '240ms' }} />
                     </div>
                   ) : (
-                    <div className="prose prose-sm max-w-none prose-headings:text-slate-700 prose-a:text-blue-600 prose-code:text-rose-600 prose-code:bg-slate-100 prose-code:px-1 prose-code:rounded prose-pre:bg-slate-900 prose-pre:text-slate-100 prose-ul:list-disc prose-ol:list-decimal prose-table:border-collapse">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                        {m.text}
-                      </ReactMarkdown>
+                    <div className="prose prose-sm max-w-none prose-a:text-primary prose-code:bg-muted prose-code:px-1 prose-code:rounded prose-pre:bg-sidebar prose-pre:text-sidebar-foreground">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{m.text}</ReactMarkdown>
                     </div>
                   )}
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-[10px] text-slate-400">{m.time}</span>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="text-[10px] text-muted-foreground">{m.time}</span>
                     {m.role === 'bot' && m.text && (
-                      <button
-                        onClick={() => speakMessage(i, m.text)}
-                        className={`text-xs px-2 py-0.5 rounded transition ${speaking === i ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}
-                        title={speaking === i ? '停止朗读' : '朗读'}
-                      >
+                      <Button onClick={() => speakMessage(i, m.text)} variant="ghost" size="xs"
+                        className={speaking === i ? 'text-primary' : 'text-muted-foreground'}>
                         {speaking === i ? '🔊' : '🔈'}
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -312,38 +228,41 @@ export default function Chat() {
             ))}
             <div ref={chatEnd} />
           </div>
-        </div>
+        </ScrollArea>
 
-        <div className="border-t border-slate-200 bg-white p-3">
-          {/* 语音模式状态栏 */}
+        {/* 输入区 */}
+        <div className="border-t border-border bg-background px-4 py-3">
           {voiceMode && (
-            <div className="max-w-2xl mx-auto mb-2 flex items-center gap-2 text-xs">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-slate-500">
-                语音模式已开启 — 说 <strong className="text-purple-600">{ASSISTANT_NAME}</strong> 唤醒
-                {waitingCommand && <span className="text-amber-500 ml-1">，正在等待指令...</span>}
-              </span>
+            <div className="max-w-3xl mx-auto mb-2 flex items-center gap-2 text-[11px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-muted-foreground">说 <strong className="text-primary">{ASSISTANT_NAME}</strong> 唤醒{waitingCommand && <span className="text-amber-500 ml-1">，等待指令...</span>}</span>
             </div>
           )}
-          <div className="max-w-2xl mx-auto flex gap-2">
-            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey}
-              placeholder={listening ? '正在聆听...' : voiceMode ? `说"${ASSISTANT_NAME}"唤醒我...` : '输入消息，Enter 发送'} disabled={sending}
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50" />
-            <button onClick={startListening} disabled={listening || voiceMode}
-              className={`px-3 py-2.5 rounded-xl text-sm border transition ${listening ? 'bg-red-50 border-red-300 text-red-600 animate-pulse' : 'border-slate-200 hover:bg-slate-50 disabled:opacity-30'}`}
-              title="语音输入">
-              🎤
-            </button>
-            <button onClick={toggleVoiceMode}
-              className={`px-3 py-2.5 rounded-xl text-sm border transition font-medium ${voiceMode ? 'bg-purple-600 text-white border-purple-600 animate-pulse' : 'border-purple-200 text-purple-500 hover:bg-purple-50'}`}
-              title={voiceMode ? '关闭语音模式' : '开启语音模式'}>
-              若愚
-            </button>
-            <button onClick={() => send()} disabled={sending}
-              className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">发送</button>
-          </div>
-          <div className="text-center text-[11px] text-slate-400 mt-2">
-            {hints.map(h => <span key={h} onClick={() => quickSend(h)} className="cursor-pointer hover:text-blue-500 mx-1">{h}</span>)}
+          <div className="max-w-3xl mx-auto">
+            <div className="flex items-end gap-2 bg-muted rounded-2xl px-4 py-3 border border-transparent transition-all focus-within:bg-background focus-within:border-primary/20 focus-within:ring-3 focus-within:ring-primary/10">
+              <Button onClick={startListening} disabled={listening || voiceMode} variant="ghost" size="icon-sm"
+                className={listening ? 'text-destructive' : 'text-muted-foreground'}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+              </Button>
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey}
+                placeholder={listening ? '正在聆听...' : voiceMode ? `说"${ASSISTANT_NAME}"唤醒我...` : '输入消息，Enter 发送'}
+                disabled={sending}
+                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50 py-0.5 text-foreground" />
+              <Button onClick={() => send()} disabled={sending || !input.trim()} size="icon-sm">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 2 2l20 10L2 22l1.4-1.6L7 12Z"/></svg>
+              </Button>
+            </div>
+            <div className="flex items-center justify-between mt-2">
+              <Button onClick={toggleVoiceMode} variant="ghost" size="xs"
+                className={voiceMode ? 'text-primary font-medium' : 'text-muted-foreground'}>
+                {voiceMode ? '语音模式已开启' : '🎤 语音唤醒'}
+              </Button>
+              <div className="flex gap-1">
+                {hints.map(h => (
+                  <span key={h} onClick={() => quickSend(h)} className="text-[11px] text-muted-foreground cursor-pointer hover:text-foreground px-1.5 transition-colors">{h}</span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>

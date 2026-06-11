@@ -24,7 +24,12 @@ export default function Status() {
   useEffect(() => {
     clearInterval(timer.current);
     setCountdown(intervalSec);
-    timer.current = setInterval(() => setCountdown(prev => { if (prev <= 1) { reload(); return intervalSec; } return prev - 1; }), 1000);
+    timer.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { reload(); return intervalSec; }
+        return prev - 1;
+      });
+    }, 1000);
     return () => clearInterval(timer.current);
   }, [intervalSec, reload]);
 
@@ -34,51 +39,99 @@ export default function Status() {
   const gpuUtil = parseInt(gpu?.util ?? '0') || 0;
 
   return (
-    <div className="bg-[#0b1121] min-h-[calc(100vh-56px)] text-white">
+    <div className="bg-dark min-h-[calc(100vh-48px)] text-white">
       <div className="max-w-3xl mx-auto px-4 py-8">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold">DevMechin 服务器</h1>
-          <p className="text-slate-400 text-sm mt-1">8.133.175.201 · Ubuntu 24.04 · i7-14700KF · RTX 4080 SUPER</p>
+        {/* 标题 */}
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-serif font-semibold text-white/90">DevMechin</h1>
+          <p className="text-dark-muted text-sm mt-1">
+            8.133.175.201 · Ubuntu 24.04 · i7-14700KF · RTX 4080 SUPER
+          </p>
         </div>
 
-        <div className="flex items-center justify-center gap-3 text-sm text-slate-400 mb-6">
-          刷新间隔
-          <select value={intervalSec} onChange={e => changeInterval(Number(e.target.value))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-white">
-            <option value={5}>5 秒</option><option value={15}>15 秒</option><option value={30}>30 秒</option><option value={60}>60 秒</option>
+        {/* 刷新控制 */}
+        <div className="flex items-center justify-center gap-3 text-sm text-dark-muted mb-6">
+          <span className="text-xs uppercase tracking-wider">刷新间隔</span>
+          <select
+            value={intervalSec}
+            onChange={e => changeInterval(Number(e.target.value))}
+            className="bg-dark-surface border border-dark-border rounded-md px-2.5 py-1 text-sm text-white/80"
+          >
+            <option value={5}>5s</option>
+            <option value={15}>15s</option>
+            <option value={30}>30s</option>
+            <option value={60}>60s</option>
           </select>
-          · 下次刷新 <span className="text-blue-400 font-mono font-bold w-8 text-center">{countdown}</span>s
-          <button onClick={reload} className="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-1 rounded text-xs hover:bg-blue-600/30">🔄 刷新</button>
+          <span className="text-xs">
+            下次 <span className="text-accent font-mono font-medium">{countdown}</span>s
+          </span>
+          <button
+            onClick={reload}
+            className="text-xs text-accent border border-accent/30 px-3 py-1 rounded-md hover:bg-accent/10 transition-colors"
+          >
+            刷新
+          </button>
         </div>
 
-        {loading && <div className="text-center py-8 text-slate-400"><div className="w-6 h-6 border-2 border-slate-600 border-t-blue-400 rounded-full animate-spin mx-auto mb-2" />加载中...</div>}
-        {error && <div className="text-center py-8 text-red-400">⚠️ 加载失败: {error}<br /><button onClick={reload} className="mt-2 bg-blue-600/20 text-blue-400 border border-blue-500/30 px-3 py-1 rounded text-xs">重试</button></div>}
+        {/* 加载/错误状态 */}
+        {loading && (
+          <div className="text-center py-12 text-dark-muted">
+            <div className="w-6 h-6 border-2 border-dark-border border-t-accent rounded-full animate-spin mx-auto mb-3" />
+            加载中...
+          </div>
+        )}
+        {error && (
+          <div className="text-center py-12 text-red-400">
+            <p>⚠ 加载失败: {error}</p>
+            <button
+              onClick={reload}
+              className="mt-3 text-sm text-accent border border-accent/30 px-3 py-1 rounded-md hover:bg-accent/10"
+            >
+              重试
+            </button>
+          </div>
+        )}
 
+        {/* 服务状态 */}
         {ss && <>
           <div className="grid sm:grid-cols-2 gap-3 mb-6">
-            {serviceDefs.map(({ key, ...s }) => <ServiceBadge key={key} {...s} up={svc[key] !== false} />)}
+            {serviceDefs.map(({ key, ...s }) => (
+              <ServiceBadge key={key} {...s} up={svc[key] !== false} />
+            ))}
           </div>
+
+          {/* 系统指标 */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-              <div className="text-xs text-slate-400 uppercase mb-1">⏱ 运行时间</div>
-              <div className="text-lg font-bold">{sys?.uptime ?? '—'}</div>
+            <div className="bg-white/3 border border-dark-border rounded-md p-4 text-center">
+              <div className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">运行时间</div>
+              <div className="text-lg font-medium font-mono">{sys?.uptime ?? '—'}</div>
             </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-              <div className="text-xs text-slate-400 uppercase mb-1">💾 内存</div>
-              <div className="text-lg font-bold">{sys?.mem_used ?? '—'}<span className="text-sm text-slate-400">/{sys?.mem_total ?? '—'}</span></div>
+            <div className="bg-white/3 border border-dark-border rounded-md p-4 text-center">
+              <div className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">内存</div>
+              <div className="text-lg font-medium font-mono">
+                {sys?.mem_used ?? '—'}
+                <span className="text-sm text-dark-muted">/{sys?.mem_total ?? '—'}</span>
+              </div>
               <ProgressBar pct={memPct} />
             </div>
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-              <div className="text-xs text-slate-400 uppercase mb-1">📀 磁盘</div>
-              <div className="text-lg font-bold">{sys?.disk_pct ?? '—'}</div>
-              <div className="text-[10px] text-slate-500">{sys?.disk_used ?? '—'}/{sys?.disk_total ?? '—'}</div>
+            <div className="bg-white/3 border border-dark-border rounded-md p-4 text-center">
+              <div className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">磁盘</div>
+              <div className="text-lg font-medium font-mono">{sys?.disk_pct ?? '—'}</div>
+              <div className="text-[10px] text-dark-muted mt-0.5">
+                {sys?.disk_used ?? '—'}/{sys?.disk_total ?? '—'}
+              </div>
               <ProgressBar pct={diskPct} color="bg-emerald-500" />
             </div>
-            {gpu?.name && <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-              <div className="text-xs text-slate-400 uppercase mb-1">🎮 GPU</div>
-              <div className="text-lg font-bold">{gpuUtil}%</div>
-              <div className="text-[10px] text-slate-500">{gpu.mem_used}/{gpu.mem_total} | {gpu.temp}°C</div>
-              <ProgressBar pct={gpuUtil} color="bg-purple-500" />
-            </div>}
+            {gpu?.name && (
+              <div className="bg-white/3 border border-dark-border rounded-md p-4 text-center">
+                <div className="text-[10px] text-dark-muted uppercase tracking-wider mb-1">GPU</div>
+                <div className="text-lg font-medium font-mono">{gpuUtil}%</div>
+                <div className="text-[10px] text-dark-muted mt-0.5">
+                  {gpu.mem_used}/{gpu.mem_total} | {gpu.temp}°C
+                </div>
+                <ProgressBar pct={gpuUtil} color="bg-purple-500" />
+              </div>
+            )}
           </div>
         </>}
       </div>

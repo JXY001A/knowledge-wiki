@@ -229,48 +229,50 @@ export default function Chat() {
 
   return (
     <div className="flex h-[calc(100vh-48px)]">
-      {/* ── 深色侧边栏 (DeepSeek 风格) ── */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-0'} bg-sidebar flex flex-col transition-all overflow-hidden flex-shrink-0`}>
-        {/* Logo / 新对话 */}
+      {/* 侧边栏 */}
+      <aside className={`${sidebarOpen ? 'w-56' : 'w-0'} bg-white border-r border-border flex flex-col transition-all overflow-hidden flex-shrink-0`}>
         <div className="p-3">
           <button
             onClick={newChat}
-            className="w-full py-2.5 border border-gray-600/40 text-gray-300 rounded-lg text-sm hover:bg-sidebar-hover transition-colors"
+            className="w-full py-2 bg-ink text-white rounded-md text-sm font-medium hover:opacity-85 transition-opacity"
           >
             ＋ 新对话
           </button>
         </div>
-
-        {/* 会话列表 */}
-        <div className="flex-1 overflow-y-auto dark-scrollbar px-2 pb-2">
+        <div className="flex-1 overflow-y-auto px-2 pb-2">
           {convs.map(c => (
             <div
               key={c.id}
               onClick={() => loadConv(c.id)}
-              className={`px-3 py-2.5 rounded-lg cursor-pointer text-sm mb-0.5 transition-colors ${
+              className={`px-3 py-2 rounded-md cursor-pointer text-sm mb-0.5 transition-colors ${
                 c.id === activeId
-                  ? 'bg-sidebar-active text-white'
-                  : 'text-gray-400 hover:bg-sidebar-hover hover:text-gray-200'
+                  ? 'bg-accent-light text-accent'
+                  : 'hover:bg-paper text-ink'
               }`}
             >
-              <div className="truncate text-[13px]">{c.title || '新对话'}</div>
-              <div className="text-[10px] text-gray-500 mt-0.5">
+              <div className="font-medium truncate flex items-center gap-1 text-[13px]">
+                {c.title || '新对话'}
+                {c.channel && c.channel !== 'web' && (
+                  <span className="text-[10px] bg-emerald-50 text-emerald-600 px-1 rounded-sm">
+                    {c.channel === 'wecom' ? '💬' : '🔧'}
+                  </span>
+                )}
+              </div>
+              <div className="text-[10px] text-muted mt-0.5">
                 {c.updated_at?.slice(0, 10)}
                 {c.channel && c.channel !== 'web' ? ` · ${c.channel}` : ''}
               </div>
             </div>
           ))}
           {convs.length === 0 && (
-            <p className="text-xs text-gray-500 text-center py-8">暂无历史对话</p>
+            <p className="text-xs text-muted text-center py-8">暂无历史对话</p>
           )}
         </div>
-
-        {/* 底部用户区 + 删除 */}
         {activeId && (
-          <div className="p-3 border-t border-gray-700/50">
+          <div className="p-2 border-t border-border">
             <button
               onClick={deleteConv}
-              className="w-full text-xs text-gray-500 py-1.5 rounded hover:text-red-400 hover:bg-sidebar-hover transition-colors"
+              className="w-full text-xs text-red-500 py-1.5 rounded hover:bg-red-50 transition-colors"
             >
               删除对话
             </button>
@@ -278,22 +280,20 @@ export default function Chat() {
         )}
       </aside>
 
-      {/* ── 主聊天区 ── */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white">
-        {/* 消息区域 */}
+      {/* 主聊天区 */}
+      <div className="flex-1 flex flex-col min-w-0">
         <div className="flex-1 overflow-y-auto px-4">
-          <div className="max-w-3xl mx-auto py-4">
-            {/* 空状态 — 建议 chips */}
+          <div className="max-w-2xl mx-auto py-4">
             {messages.length === 0 && (
-              <div className="text-center pt-24 pb-8">
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">有什么可以帮你的？</h2>
-                <p className="text-sm text-gray-400 mb-8">知识查询 · 待办管理 · 定时提醒 · 笔记记录</p>
+              <div className="text-center pt-20 pb-8">
+                <h2 className="text-2xl font-serif font-semibold text-ink mb-2">有什么可以帮你的？</h2>
+                <p className="text-sm text-muted mb-8">知识查询 · 待办管理 · 定时提醒 · 笔记记录</p>
                 <div className="flex flex-wrap gap-2 justify-center">
                   {['查看待办', '知识查询', '今日日程', '创建待办', '设置提醒', '今日早报'].map(h => (
                     <button
                       key={h}
                       onClick={() => quickSend(h)}
-                      className="bg-white border border-gray-200 rounded-full px-4 py-2 text-[13px] text-gray-500 hover:text-accent hover:border-accent/30 transition-all"
+                      className="bg-white border border-border rounded-full px-4 py-2 text-[13px] text-muted hover:text-ink hover:border-accent/30 transition-all"
                     >
                       {h}
                     </button>
@@ -302,44 +302,47 @@ export default function Chat() {
               </div>
             )}
 
-            {/* 消息列表 */}
             {messages.map((m, i) => (
-              <div key={i} className={`flex gap-3 mb-6 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div key={i} className={`flex gap-2.5 mb-4 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 {/* 头像 */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] flex-shrink-0 font-medium ${
                   m.role === 'user'
-                    ? 'bg-accent text-white'
-                    : 'bg-gray-100 text-gray-400'
+                    ? 'bg-ink text-white'
+                    : voiceMode
+                      ? 'bg-accent-light text-accent'
+                      : 'bg-paper text-muted'
                 }`}>
-                  {m.role === 'user' ? '我' : 'AI'}
+                  {m.role === 'user' ? 'J' : voiceMode ? ASSISTANT_NAME[0] : 'AI'}
                 </div>
 
                 {/* 气泡 */}
-                <div className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                <div className={`max-w-[80%] px-3.5 py-2.5 rounded-lg text-sm leading-relaxed ${
                   m.role === 'user'
-                    ? 'bg-accent-light text-gray-900 rounded-br-md'
-                    : 'bg-gray-50 text-gray-900 rounded-bl-md'
+                    ? 'bg-accent-light text-ink rounded-br-sm'
+                    : 'bg-white border border-border text-ink rounded-bl-sm'
                 }`}>
                   {m.role === 'bot' && m.text.trim() === '' ? (
-                    <div className="flex items-center gap-1.5 text-gray-400 py-1">
-                      <span className="w-2 h-2 bg-accent/30 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 bg-accent/30 rounded-full animate-bounce" style={{ animationDelay: '120ms' }} />
-                      <span className="w-2 h-2 bg-accent/30 rounded-full animate-bounce" style={{ animationDelay: '240ms' }} />
+                    <div className="flex items-center gap-1.5 text-muted py-1">
+                      <span className="w-1.5 h-1.5 bg-accent/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 bg-accent/40 rounded-full animate-bounce" style={{ animationDelay: '120ms' }} />
+                      <span className="w-1.5 h-1.5 bg-accent/40 rounded-full animate-bounce" style={{ animationDelay: '240ms' }} />
                     </div>
                   ) : (
-                    <div className="prose prose-sm max-w-none prose-a:text-accent prose-code:text-gray-900 prose-code:bg-gray-200 prose-code:px-1 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
+                    <div className="prose prose-sm max-w-none prose-headings:text-ink prose-a:text-accent prose-code:text-ink prose-code:bg-border prose-code:px-1 prose-code:rounded-sm prose-pre:bg-ink prose-pre:text-paper prose-ul:list-disc prose-ol:list-decimal prose-table:border-collapse">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
                         {m.text}
                       </ReactMarkdown>
                     </div>
                   )}
                   <div className="flex items-center justify-between mt-1.5">
-                    <span className="text-[10px] text-gray-400">{m.time}</span>
+                    <span className="text-[10px] text-faint">{m.time}</span>
                     {m.role === 'bot' && m.text && (
                       <button
                         onClick={() => speakMessage(i, m.text)}
                         className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
-                          speaking === i ? 'text-accent bg-accent-light' : 'text-gray-400 hover:text-gray-600'
+                          speaking === i
+                            ? 'text-accent bg-accent-light'
+                            : 'text-muted hover:text-ink'
                         }`}
                         title={speaking === i ? '停止朗读' : '朗读'}
                       >
@@ -354,80 +357,68 @@ export default function Chat() {
           </div>
         </div>
 
-        {/* ── 输入区 (DeepSeek 风格 — 大圆角) ── */}
-        <div className="border-t border-gray-100 bg-white px-4 py-3">
+        {/* 输入区 */}
+        <div className="border-t border-border bg-white p-3">
           {/* 语音模式状态栏 */}
           {voiceMode && (
-            <div className="max-w-3xl mx-auto mb-2 flex items-center gap-2 text-[11px]">
+            <div className="max-w-2xl mx-auto mb-2 flex items-center gap-2 text-[11px]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-gray-500">
-                说 <strong className="text-accent">{ASSISTANT_NAME}</strong> 唤醒
+              <span className="text-muted">
+                说 <strong className="text-accent font-medium">{ASSISTANT_NAME}</strong> 唤醒
                 {waitingCommand && <span className="text-amber-500 ml-1">，等待指令...</span>}
               </span>
             </div>
           )}
-
-          <div className="max-w-3xl mx-auto">
-            {/* 输入框 + 按钮行 */}
-            <div className="flex items-end gap-2 bg-gray-100 rounded-2xl px-4 py-3 border border-transparent transition-all focus-within:bg-white focus-within:border-accent/30 focus-within:shadow-input">
-              {/* 语音按钮 */}
-              <button
-                onClick={startListening}
-                disabled={listening || voiceMode}
-                className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
-                  listening
-                    ? 'text-red-500 bg-red-50'
-                    : 'text-gray-400 hover:text-gray-600 disabled:opacity-30'
-                }`}
-                title="语音输入"
+          <div className="max-w-2xl mx-auto flex gap-2">
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={onKey}
+              placeholder={listening ? '正在聆听...' : voiceMode ? `说"${ASSISTANT_NAME}"唤醒我...` : '输入消息，Enter 发送'}
+              disabled={sending}
+              className="flex-1 bg-paper border border-border rounded-md px-4 py-2.5 text-sm outline-none placeholder:text-faint focus:border-accent/40 focus:ring-2 focus:ring-accent/10 disabled:opacity-50 transition-all"
+            />
+            <button
+              onClick={startListening}
+              disabled={listening || voiceMode}
+              className={`px-3 py-2.5 rounded-md text-sm border transition-colors ${
+                listening
+                  ? 'bg-red-50 border-red-300 text-red-600 animate-pulse'
+                  : 'border-border text-muted hover:text-ink hover:bg-paper disabled:opacity-30'
+              }`}
+              title="语音输入"
+            >
+              🎤
+            </button>
+            <button
+              onClick={toggleVoiceMode}
+              className={`px-3 py-2.5 rounded-md text-sm border transition-colors font-medium ${
+                voiceMode
+                  ? 'bg-accent text-white border-accent'
+                  : 'border-accent/30 text-accent hover:bg-accent-light'
+              }`}
+              title={voiceMode ? '关闭语音模式' : '开启语音模式'}
+            >
+              若愚
+            </button>
+            <button
+              onClick={() => send()}
+              disabled={sending}
+              className="bg-ink text-white px-5 py-2.5 rounded-md text-sm font-medium hover:opacity-85 disabled:opacity-50 transition-opacity"
+            >
+              发送
+            </button>
+          </div>
+          <div className="text-center text-[11px] text-faint mt-2">
+            {hints.map(h => (
+              <span
+                key={h}
+                onClick={() => quickSend(h)}
+                className="cursor-pointer hover:text-ink mx-1.5 transition-colors"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-              </button>
-
-              {/* 文本输入 */}
-              <input
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={onKey}
-                placeholder={listening ? '正在聆听...' : voiceMode ? `说"${ASSISTANT_NAME}"唤醒我...` : '输入消息，Enter 发送'}
-                disabled={sending}
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400 disabled:opacity-50 py-0.5"
-              />
-
-              {/* 发送按钮 */}
-              <button
-                onClick={() => send()}
-                disabled={sending || !input.trim()}
-                className="p-1.5 rounded-lg bg-accent text-white hover:bg-accent-dark disabled:opacity-30 disabled:hover:bg-accent transition-all flex-shrink-0"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 2 2l20 10L2 22l1.4-1.6L7 12Z"/></svg>
-              </button>
-            </div>
-
-            {/* 语音模式 + 快捷提示 */}
-            <div className="flex items-center justify-between mt-2">
-              <button
-                onClick={toggleVoiceMode}
-                className={`text-[11px] px-2 py-0.5 rounded transition-colors ${
-                  voiceMode
-                    ? 'text-accent bg-accent-light font-medium'
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {voiceMode ? '语音模式已开启' : '🎤 语音唤醒'}
-              </button>
-              <div className="flex gap-1">
-                {hints.map(h => (
-                  <span
-                    key={h}
-                    onClick={() => quickSend(h)}
-                    className="text-[11px] text-gray-400 cursor-pointer hover:text-accent px-1.5 transition-colors"
-                  >
-                    {h}
-                  </span>
-                ))}
-              </div>
-            </div>
+                {h}
+              </span>
+            ))}
           </div>
         </div>
       </div>

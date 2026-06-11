@@ -1,46 +1,80 @@
 @import "tailwindcss";
 
+/* ── Geist Sans (variable) ── */
+@font-face {
+  font-family: 'Geist Sans';
+  src: url('https://cdn.jsdelivr.net/npm/geist@1.7.2/dist/fonts/geist-sans/Geist[wght].woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Geist Mono (variable) ── */
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('https://cdn.jsdelivr.net/npm/geist@1.7.2/dist/fonts/geist-mono/GeistMono[wght].woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── Design Tokens ── */
 @theme {
-  /* Brand accent — DeepSeek 蓝 */
-  --color-accent: #4d6bfe;
-  --color-accent-light: #eef1ff;
-  --color-accent-dark: #3b54d4;
+  /* Brand colors — 日式纸墨 */
+  --color-paper: #fafaf8;
+  --color-ink: #1a1a18;
+  --color-muted: #8a8780;
+  --color-faint: #b8b5ae;
+  --color-accent: #4b5cc4;
+  --color-accent-light: #efedf8;
+  --color-border: #e8e6e1;
 
-  /* Dark sidebar */
-  --color-sidebar: #1e2025;
-  --color-sidebar-hover: #2a2d35;
-  --color-sidebar-active: #323640;
+  /* Dark theme colors */
+  --color-dark: #0d0d0a;
+  --color-dark-surface: #181814;
+  --color-dark-border: #2a2a24;
+  --color-dark-muted: #8a8880;
+
+  /* Typography */
+  --font-sans: 'Geist Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Newsreader', ui-serif, Georgia, serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
 
   /* Radii */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 20px;
 
   /* Shadows */
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.08);
-  --shadow-input: 0 0 0 3px rgba(77, 107, 254, 0.15);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
 
 /* ── Base ── */
 body {
   margin: 0;
-  background: #f9fafb;
-  color: #111827;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Subtle paper grain overlay ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
-
-/* ── Dark sidebar scrollbar ── */
-.dark-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; }
-.dark-scrollbar::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-faint); }
